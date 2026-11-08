@@ -1,0 +1,1 @@
+{"name":"newapi-checkin-console-tests","private":true,"type":"module","scripts":{"test":"node --test tests/ui/console.test.mjs"}}

@@ -1,0 +1,11 @@
+go.work
+go.work.sum
+.superpowers/
+.codegraph/
+dist/
+.test-artifacts/
+docs/deployment-*.md
+docs/verification.md
+docs/superpowers/
+__pycache__/
+*.pyc
