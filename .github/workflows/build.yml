@@ -128,7 +128,7 @@ jobs:
           import hashlib
           from pathlib import Path
           version = Path('VERSION').read_text().strip()
-          folder = Path('dist/bundle')
+          folder = Path('dist/bundle') / version
           expected = {f'newapi-checkin_{version}_{platform}.zip' for platform in ('windows_amd64', 'linux_amd64', 'linux_arm64')}
           actual = {path.name for path in folder.glob('*.zip')}
           if actual != expected:
