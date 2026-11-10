@@ -23,6 +23,7 @@ func TestABI(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("artifacts retained:", dir)
+	logHostOnFailure(t, dir)
 	plugins := filepath.Join(dir, "plugins")
 	auth := filepath.Join(dir, "auth")
 	_ = os.MkdirAll(plugins, 0700)
@@ -74,4 +75,15 @@ func TestABI(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("no background probe result, inspect %s", dir)
+}
+
+func logHostOnFailure(t *testing.T, dir string) {
+	t.Helper()
+	t.Cleanup(func() {
+		if t.Failed() {
+			if data, err := os.ReadFile(filepath.Join(dir, "host.log")); err == nil {
+				t.Logf("CPA host output:\n%s", data)
+			}
+		}
+	})
 }

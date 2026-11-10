@@ -145,6 +145,7 @@ func newHost(t *testing.T) *hostFixture {
 	}
 	h := &hostFixture{t: t, dir: dir, auth: filepath.Join(dir, "auth"), home: filepath.Join(dir, "state"), config: filepath.Join(dir, "config.yaml")}
 	t.Log("retained artifacts:", dir)
+	logHostOnFailure(t, dir)
 	_ = os.MkdirAll(h.auth, 0700)
 	_ = os.MkdirAll(h.home, 0700)
 	plugins := filepath.Join(dir, "plugins")
