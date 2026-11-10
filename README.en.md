@@ -8,7 +8,7 @@ Manage accounts across NewAPI sites, schedule daily check-ins, and view credenti
 
 ## Downloads
 
-This source tree prepares **v0.1.1** with five native packages; native macOS builds and real CPA loading still await CI validation. Published **v0.1.0** provides the three Windows/Linux packages via the Download link above. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
+**v0.1.1** provides the five native packages below. Windows, Linux, and macOS have passed native builds and real CPA integration tests. Use the Download link above to get the release. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
 
 | Platform | Release asset | Plugin inside the ZIP |
 | --- | --- | --- |

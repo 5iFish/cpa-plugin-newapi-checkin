@@ -2,21 +2,25 @@
 
 [简体中文 README](../README.md) · [English README](../README.en.md)
 
-插件使用 CPA C ABI。SDK 固定为 v8.0.58，真实加载验证覆盖 v8.0.58 和 ARM64 正式环境中的 v8.0.52。其他 CPA 版本需保持兼容的插件 ABI。
+插件使用 CPA C ABI。v0.1.1 的五个平台均在原生环境中通过 CPA v8.0.58 的构建和集成测试，宿主固定提交为 `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`。其他 CPA 版本需保持兼容的插件 ABI。
 
-The plugin uses CPA's C ABI. Its SDK is pinned to v8.0.58; real-host validation covers v8.0.58 and v8.0.52 on ARM64. Other CPA versions must retain the compatible ABI.
+The plugin uses CPA's C ABI. All five v0.1.1 platforms passed native builds and integration tests with CPA v8.0.58, pinned to commit `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`. Other CPA versions must retain the compatible ABI.
 
 | Platform | Build environment | Actual host validation |
 | --- | --- | --- |
-| Windows amd64 | Go 1.26.10, MinGW UCRT GCC 16.2 | Windows 11 x64, CPA v8.0.58 |
-| Linux amd64 | Go 1.26.10, GCC 13.3, Ubuntu 24.04 / glibc 2.39 | CPA v8.0.58, Ubuntu/glibc |
-| Linux arm64 | Go 1.26.10, GCC 11.4, Ubuntu 22.04 / glibc 2.35 | CPA v8.0.52, Debian 12 / glibc 2.36 container |
-| macOS amd64 (v0.1.1 preparation) | Planned: Go 1.26.10, clang, macos-15-intel, deployment target 15.0 | Pending native CI; not yet validated |
-| macOS arm64 (v0.1.1 preparation) | Planned: Go 1.26.10, clang, macos-15, deployment target 15.0 | Pending native CI; not yet validated |
+| Windows amd64 | Go 1.26.10, MinGW UCRT GCC 16.2.0 | Windows Server 2025, CPA v8.0.58; 9/9 integration tests |
+| Linux amd64 | Go 1.26.10, GCC 13.3.0, Ubuntu 24.04.5 | CPA v8.0.58; 9/9 integration tests |
+| Linux arm64 | Go 1.26.10, GCC 13.3.0, Ubuntu 24.04.5 | CPA v8.0.58; 9/9 integration tests |
+| macOS amd64 | Go 1.26.10, Apple clang 17.0.0, macOS 15.7.9, deployment target 15.0 | CPA v8.0.58; 9/9 integration tests |
+| macOS arm64 | Go 1.26.10, Apple clang 17.0.0, macOS 15.8.2, deployment target 15.0 | CPA v8.0.58; 9/9 integration tests |
 
-macOS 新增两个原生构建与真实 CPA 加载任务，尚未执行，不能据此宣布已通过。默认以 macOS 15 为目标，不承诺更旧系统；Apple Silicon 上运行 Intel CPA 时需选 amd64 插件。现有 Windows/Linux 表格记录 v0.1.0 的已验证环境，v0.1.1 发布前仍须在各平台执行 CI。
+验证记录：[五平台原生 CI](https://github.com/5iFish/cpa-plugin-newapi-checkin/actions/runs/42737758242)。每个平台均执行单元测试、静态检查、UI 和打包测试，以及全部 9 项真实 CPA 集成测试；发布包使用同一已加载验证的动态库。macOS 默认以 15 为目标，不承诺更旧系统；Apple Silicon 上运行 Intel CPA 时需选 amd64 插件。Intel macOS 使用同步的原生线程桥接宿主和插件，避免两套 Go 运行时在同一线程上混用状态。
 
-The two new macOS jobs build native libraries and load them into CPA. They have not run yet. The default target is macOS 15; older systems are not claimed compatible. An Intel CPA process on Apple Silicon needs the amd64 plugin. The existing Windows/Linux rows describe v0.1.0 validation; all platforms require CI before v0.1.1 publication.
+Evidence: [five-platform native CI](https://github.com/5iFish/cpa-plugin-newapi-checkin/actions/runs/42737758242). Every platform ran unit tests, vet, UI and packaging tests, and all nine real CPA integration tests. Packages contain the same library loaded by those integration tests. macOS targets version 15; older systems are not claimed compatible. An Intel CPA process on Apple Silicon needs the amd64 plugin. Intel macOS uses synchronous native-thread calls between the host and plugin to keep their Go runtimes from sharing thread-local runtime state.
+
+补充验证：Windows 11 x64 已通过本地 CPA v8.0.58 集成。此前版本在 Debian 12 / glibc 2.36 容器中的 CPA v8.0.52（ARM64）完成过部署验证；这不代替上表的 v0.1.1 原生 CI 记录。
+
+Additional validation: local integration passed on Windows 11 x64 with CPA v8.0.58. An earlier build was deployed with CPA v8.0.52 on ARM64 in a Debian 12 / glibc 2.36 container; that historical deployment is separate from the v0.1.1 native CI results above.
 
 Linux artifacts require glibc 2.34 or newer according to their imported symbols. This is a minimum symbol requirement, not a claim that every distribution at that version has been tested. Alpine/musl failed real loading with a TLS relocation error and is not supported. ARM64 does not include 32-bit ARM; Windows ARM64 is not provided.
 

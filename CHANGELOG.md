@@ -1,9 +1,10 @@
 # Changelog / 更新记录
 
-## v0.1.1 — 未发布 / Unreleased
+## v0.1.1 — 2026-11-10
 
 - 支持可选站点用户 ID，为要求 `New-Api-User` 的站点补齐绑定、复查和签到请求；拒绝与令牌身份不一致的 ID。
-- 增加 macOS Intel、Apple Silicon 的原生构建、`.dylib` 打包和真实 CPA 集成工作流；原生 macOS CI 尚待执行。
+- 增加 macOS Intel、Apple Silicon 的原生构建和 `.dylib` 安装包；Windows、Linux 双架构及 macOS 双架构均通过真实 CPA 集成验证。
+- 隔离 Intel macOS 上宿主与插件之间的双向 Go 运行时调用，修复插件加载时的运行时内存崩溃。
 - 校验 Mach-O 架构和动态库类型，发布汇总要求五个平台包齐全。
 - 补充 macOS 安装和构建说明，说明登录与签到奖励的区别及公开站点检查的限制。
 
@@ -11,7 +12,8 @@ English:
 
 - Add an optional site user ID for sites requiring `New-Api-User`; validate it against the token identity and send it for binding, rechecks, and check-ins.
 
-- Add native macOS Intel/Apple Silicon build scripts, `.dylib` packages, and real CPA integration jobs; native macOS CI remains pending.
+- Add native macOS Intel/Apple Silicon builds and `.dylib` packages. Windows, both Linux architectures, and both macOS architectures passed real CPA integration tests.
+- Isolate calls between the host and plugin Go runtimes on Intel macOS to fix runtime memory crashes during plugin loading.
 - Validate Mach-O architecture/type and require all five platform archives before release checksums are collected.
 - Document macOS installation/builds, authentication versus check-in rewards, and the limits of public site checks.
 
