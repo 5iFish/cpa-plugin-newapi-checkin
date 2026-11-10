@@ -4,10 +4,10 @@ package integration
 
 import (
 	"bytes"
-	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
-	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
 	"encoding/json"
 	"fmt"
+	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
+	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
 	"io"
 	"net"
 	"net/http"
@@ -42,8 +42,11 @@ func product(t *testing.T) string {
 			return
 		}
 		ext := ".so"
-		if runtime.GOOS == "windows" {
+		switch runtime.GOOS {
+		case "windows":
 			ext = ".dll"
+		case "darwin":
+			ext = ".dylib"
 		}
 		productPath = filepath.Join(dir, "newapi-checkin"+ext)
 		cmd := exec.Command("go", "build", "-buildmode=c-shared", "-o", productPath, ".")

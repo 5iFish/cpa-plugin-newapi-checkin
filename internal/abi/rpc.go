@@ -23,7 +23,7 @@ type RegisterResult struct {
 func Registration() RegisterResult {
 	return RegisterResult{
 		SchemaVersion: pluginabi.SchemaVersion,
-		Metadata: pluginapi.Metadata{Name: Name, Version: "0.1.0", Author: "5ifish", GitHubRepository: "https://github.com/5ifish/cpa-plugin-newapi-checkin", ConfigFields: []pluginapi.ConfigField{
+		Metadata: pluginapi.Metadata{Name: Name, Version: "0.1.1", Author: "5ifish", GitHubRepository: "https://github.com/5ifish/cpa-plugin-newapi-checkin", ConfigFields: []pluginapi.ConfigField{
 			{Name: "checkin-at", Type: pluginapi.ConfigFieldTypeString, Description: "Daily check-in time (09:00)"},
 			{Name: "jitter-minutes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Daily jitter in minutes (0–120, default 20)"},
 			{Name: "timezone", Type: pluginapi.ConfigFieldTypeString, Description: "IANA time zone; empty means host local"},

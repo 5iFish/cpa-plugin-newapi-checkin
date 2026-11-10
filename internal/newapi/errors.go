@@ -27,6 +27,8 @@ func classify(r *http.Response, v *wireEnvelope) *core.APIError {
 		}
 		lower := strings.ToLower(text)
 		switch {
+		case strings.Contains(lower, "new-api-user") && strings.Contains(lower, "not provided"):
+			kind = "user_id_required"
 		case strings.Contains(lower, "turnstile"):
 			kind = "turnstile_blocked"
 		case lower == "check-in feature is not enabled" || text == "签到功能未开启":

@@ -11,6 +11,12 @@ The plugin uses CPA's C ABI. Its SDK is pinned to v8.0.58; real-host validation 
 | Windows amd64 | Go 1.26.10, MinGW UCRT GCC 16.2 | Windows 11 x64, CPA v8.0.58 |
 | Linux amd64 | Go 1.26.10, GCC 13.3, Ubuntu 24.04 / glibc 2.39 | CPA v8.0.58, Ubuntu/glibc |
 | Linux arm64 | Go 1.26.10, GCC 11.4, Ubuntu 22.04 / glibc 2.35 | CPA v8.0.52, Debian 12 / glibc 2.36 container |
+| macOS amd64 (v0.1.1 preparation) | Planned: Go 1.26.10, clang, macos-15-intel, deployment target 15.0 | Pending native CI; not yet validated |
+| macOS arm64 (v0.1.1 preparation) | Planned: Go 1.26.10, clang, macos-15, deployment target 15.0 | Pending native CI; not yet validated |
+
+macOS 新增两个原生构建与真实 CPA 加载任务，尚未执行，不能据此宣布已通过。默认以 macOS 15 为目标，不承诺更旧系统；Apple Silicon 上运行 Intel CPA 时需选 amd64 插件。现有 Windows/Linux 表格记录 v0.1.0 的已验证环境，v0.1.1 发布前仍须在各平台执行 CI。
+
+The two new macOS jobs build native libraries and load them into CPA. They have not run yet. The default target is macOS 15; older systems are not claimed compatible. An Intel CPA process on Apple Silicon needs the amd64 plugin. The existing Windows/Linux rows describe v0.1.0 validation; all platforms require CI before v0.1.1 publication.
 
 Linux artifacts require glibc 2.34 or newer according to their imported symbols. This is a minimum symbol requirement, not a claim that every distribution at that version has been tested. Alpine/musl failed real loading with a TLS relocation error and is not supported. ARM64 does not include 32-bit ARM; Windows ARM64 is not provided.
 

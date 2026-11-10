@@ -29,7 +29,7 @@ type AccountRecord struct {
 }
 
 func (a AccountRecord) Summary() core.AccountSummary {
-	return core.AccountSummary{ID: a.ID, Site: a.Site, Username: a.Username, Label: a.Label, Kind: a.Kind, Channel: a.Channel, Status: a.Status, ExpiresAt: a.ExpiresAt, TokenHint: a.TokenHint, WritePermissionVerified: a.WritePermissionVerified, TotalQuota: a.TotalQuota, TotalCheckins: a.TotalCheckins, StatsSyncedAt: a.StatsSyncedAt, StatsStale: a.StatsStale, LastResult: a.LastResult}
+	return core.AccountSummary{UpstreamUserID: a.UpstreamUserID, ID: a.ID, Site: a.Site, Username: a.Username, Label: a.Label, Kind: a.Kind, Channel: a.Channel, Status: a.Status, ExpiresAt: a.ExpiresAt, TokenHint: a.TokenHint, WritePermissionVerified: a.WritePermissionVerified, TotalQuota: a.TotalQuota, TotalCheckins: a.TotalCheckins, StatsSyncedAt: a.StatsSyncedAt, StatsStale: a.StatsStale, LastResult: a.LastResult}
 }
 func Record(a core.Account, path, status string) AccountRecord {
 	r := AccountRecord{ID: a.ID, Site: a.Site, UpstreamUserID: a.UpstreamUserID, Username: a.Username, Label: a.Label, Kind: a.Credential.Kind, Channel: a.Credential.Channel, Status: status, PhysicalPath: path, LastGeneration: a.Credential.Generation, ExpiresAt: a.Credential.ExpiresAtHint}

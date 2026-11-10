@@ -8,23 +8,27 @@ Manage accounts across NewAPI sites, schedule daily check-ins, and view credenti
 
 ## Downloads
 
-Stable release **v0.1.0** provides three native packages. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
+This source tree prepares **v0.1.1** with five native packages; native macOS builds and real CPA loading still await CI validation. Published **v0.1.0** provides the three Windows/Linux packages via the Download link above. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
 
 | Platform | Release asset | Plugin inside the ZIP |
 | --- | --- | --- |
-| Windows x64 | [newapi-checkin_0.1.0_windows_amd64.zip](https://github.com/5ifish/cpa-plugin-newapi-checkin/releases/download/v0.1.0/newapi-checkin_0.1.0_windows_amd64.zip) | `newapi-checkin.dll` |
-| Linux x86_64 | [newapi-checkin_0.1.0_linux_amd64.zip](https://github.com/5ifish/cpa-plugin-newapi-checkin/releases/download/v0.1.0/newapi-checkin_0.1.0_linux_amd64.zip) | `newapi-checkin.so` |
-| Linux ARM64 | [newapi-checkin_0.1.0_linux_arm64.zip](https://github.com/5ifish/cpa-plugin-newapi-checkin/releases/download/v0.1.0/newapi-checkin_0.1.0_linux_arm64.zip) | `newapi-checkin.so` |
+| Windows x64 | `newapi-checkin_0.1.1_windows_amd64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.1.1_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.1.1_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.1.1_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon (M series) | `newapi-checkin_0.1.1_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
-Verify archives against [`checksums.txt`](https://github.com/5ifish/cpa-plugin-newapi-checkin/releases/download/v0.1.0/checksums.txt). On Linux, run `sha256sum -c checksums.txt --ignore-missing`; on Windows, compare `Get-FileHash -Algorithm SHA256 <archive>` with the published checksum.
+Download archives and `checksums.txt` from the same release. On Linux, run `sha256sum -c checksums.txt --ignore-missing`. On macOS, compare `shasum -a 256 <archive>` with the checksum file; on Windows, use `Get-FileHash -Algorithm SHA256 <archive>`.
 
 Linux requires **glibc 2.34 or newer**. See the [tested environments](docs/compatibility.md) for the actual distribution and CPA versions validated. Alpine/musl is unsupported. Select the OS and architecture of the CPA process; for Docker, use the container's runtime environment.
+
+macOS builds target **macOS 15** by default. Intel and Apple Silicon packages are separate. Match the CPA process architecture: an Intel CPA running through Rosetta on Apple Silicon needs `darwin_amd64`. Linux containers on a Mac still need Linux packages.
 
 ## Installation
 
 This is a CPA C ABI shared library, not a Go `plugin` package. The SDK dependency is pinned to **CPA v8.0.58**, commit `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`. The NewAPI API reference is commit `a3fd673bb7897691b1041aaf8d78bab6cc15e1d5`; custom and older deployments must provide the same API contract.
 
-1. Extract the archive into the appropriate platform subdirectory under CPA's plugin directory: `plugins/windows/amd64/newapi-checkin.dll`, `plugins/linux/amd64/newapi-checkin.so`, or `plugins/linux/arm64/newapi-checkin.so`.
+1. Extract the archive into the appropriate platform subdirectory under CPA's plugin directory: `plugins/windows/amd64/newapi-checkin.dll`, `plugins/linux/amd64/newapi-checkin.so`, `plugins/linux/arm64/newapi-checkin.so`, `plugins/darwin/amd64/newapi-checkin.dylib`, or `plugins/darwin/arm64/newapi-checkin.dylib`.
 2. Enable the plugin in CPA's configuration. Merge the `plugins` section into an existing installation and keep your current management key.
 
 ```yaml
@@ -54,11 +58,21 @@ Static UI assets are public; account and task data require authentication throug
 | Site username and password | For the site's own local account, not LinuxDO credentials. Creates a dedicated session through the site's v2 password encryption protocol and does not save the password. Interactive 2FA/passkey challenges require user action. |
 | Dedicated refresh cookie | Advanced import. Create a separate login session, confirm exclusive use, and stop using that session in browsers or other tools. Already-managed sessions and sessions with an uncertain refresh outcome cannot be imported again. |
 
+Some NewAPI sites, including `new.xkool.cfd`, also require the `New-Api-User` header. When binding an access token, enter the same account's numeric ID in the optional site user ID field. You can find it in the headers of an authenticated `/api/user/self` browser request. Leave it blank for sites that do not require it. The plugin verifies the ID against the token identity and reuses the verified ID for rechecks, scheduled check-ins, and rebinding. The management API accepts the optional `upstream_user_id` field.
+
 Login sessions last at most 30 days under the reference protocol. Refreshing an access token **does not extend the original session expiry**. Expired, revoked, or retired credentials require rebinding. Rebinding the same site/user preserves history, cancels previous work, and checks the new credentials.
 
 Sites requiring Turnstile for check-in are saved in a paused state and cannot run unattended. Changing the credential type does not bypass this challenge. Site URLs must use HTTPS, with normal certificate validation and no redirect following; HTTP is permitted only for loopback testing.
 
 Binding validates identity and reads check-in state. It does not submit a check-in to probe write access. The plugin confirms `wallet:write` only when an actual check-in is needed and succeeds.
+
+## Login and check-in
+
+Authentication and reward collection are separate. Upstream NewAPI's `/api/user/login` creates a session; `POST /api/user/checkin` grants check-in rewards. The plugin uses a PAT or a saved session for check-in without asking for a password every day.
+
+For `https://new.xkool.cfd`, the public `/api/status` response observed on 2026-11-09 reports `checkin_enabled=true` and `turnstile_check=false`. Its FAQ advertises 1–5 credits for daily check-in, so the existing check-in workflow applies. The site does not expose its version; public checks neither rule out custom login rewards nor demonstrate an authenticated reward claim.
+
+Enter the site's root URL and its personal access token, rather than a model API key or the CPA management key. After binding, run a manual check-in or wait for the schedule. There is currently no account-level login-only mode. Saving credentials or refreshing access tokens is not reported as a successful check-in. Initial binding only validates and saves; scheduled work can subsequently run, and rebinding an existing account queues a follow-up check that may submit a check-in.
 
 ## Scheduling, retries, and statistics
 
@@ -104,11 +118,17 @@ Linux with GCC:
 sh scripts/build.sh
 ```
 
-Linux builds detect native `amd64` / `arm64` and write to `dist/linux-<arch>/`; Windows writes to `dist/windows-amd64/`. Package with Python 3:
+macOS with Xcode Command Line Tools and clang:
+
+```sh
+sh scripts/build-darwin.sh
+```
+
+Linux/macOS builds detect native `amd64` / `arm64` and write to `dist/linux-<arch>/` or `dist/darwin-<arch>/`; Windows writes to `dist/windows-amd64/`. Scripts reject incompatible `GOOS/GOARCH` overrides. macOS defaults to `MACOSX_DEPLOYMENT_TARGET=15.0`; overriding it does not validate other OS versions. Package with Python 3 (usually `python3` on macOS/Linux):
 
 ```sh
 python scripts/package-release.py --platform linux-amd64
-# Other targets: linux-arm64, windows-amd64
+# Other targets: linux-arm64, windows-amd64, darwin-amd64, darwin-arm64
 ```
 
 Run automated checks:
@@ -116,6 +136,7 @@ Run automated checks:
 ```sh
 GOWORK=off CGO_ENABLED=1 go test -p=2 ./... -count=1
 node --test tests/ui/console.test.mjs
+python3 -m unittest discover -s tests/packaging -v
 GOWORK=off go vet ./...
 GOWORK=off CGO_ENABLED=1 go test -race -p=2 ./internal/core ./internal/credential ./internal/account ./internal/config ./internal/engine ./internal/app
 ```
@@ -126,7 +147,7 @@ Real-host integration tests require a CPA binary built from the pinned source. T
 CPA_TEST_BIN=/absolute/path/to/cpa GOWORK=off CGO_ENABLED=1 go test -p=2 -tags=integration ./tests/integration -count=1 -v
 ```
 
-Set `CPA_TEST_PLUGIN=/absolute/path/to/newapi-checkin.so` (or `.dll`) to load an existing release binary. The ABI probe remains a separate test artifact and is never included in distribution packages. Test logs and directories are retained.
+Set `CPA_TEST_PLUGIN=/absolute/path/to/newapi-checkin.so` (`.dll` on Windows or `.dylib` on macOS) to load an existing release binary. The ABI probe remains a separate test artifact and is never included in distribution packages. Test logs and directories are retained.
 
 See [CHANGELOG](CHANGELOG.md) and [compatibility notes](docs/compatibility.md). Archive names match CPA's plugin installer. A GitHub release does not imply inclusion in the official plugin store.
 

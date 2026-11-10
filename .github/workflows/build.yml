@@ -25,15 +25,30 @@ jobs:
         include:
           - runner: windows-2025
             platform: windows-amd64
+            library: newapi-checkin.dll
+            python: python
           - runner: ubuntu-24.04
             platform: linux-amd64
+            library: newapi-checkin.so
+            python: python3
           - runner: ubuntu-24.04-arm
             platform: linux-arm64
+            library: newapi-checkin.so
+            python: python3
+          - runner: macos-15-intel
+            platform: darwin-amd64
+            library: newapi-checkin.dylib
+            python: python3
+          - runner: macos-15
+            platform: darwin-arm64
+            library: newapi-checkin.dylib
+            python: python3
     env:
       GOWORK: 'off'
       CGO_ENABLED: '1'
       GOMAXPROCS: '2'
       GOFLAGS: '-p=2'
+      MACOSX_DEPLOYMENT_TARGET: '15.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,12 +77,13 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
             test "$GITHUB_REF_NAME" = "v$(tr -d '\r\n' < VERSION)"
           fi
-      - name: Unit tests, vet, and UI tests
+      - name: Unit tests, vet, UI, and packaging tests
         shell: bash
         run: |
           go test ./... -count=1 -timeout=180s
           go vet ./...
           node --test tests/ui/console.test.mjs
+          ${{ matrix.python }} -m unittest discover -s tests/packaging -v
       - name: Build Windows library
         if: runner.os == 'Windows'
         shell: pwsh
@@ -75,6 +91,11 @@ jobs:
       - name: Build Linux library
         if: runner.os == 'Linux'
         run: sh scripts/build.sh
+      - name: Build macOS library
+        if: runner.os == 'macOS'
+        env:
+          CC: clang
+        run: sh scripts/build-darwin.sh
       - name: Checkout pinned CPA host
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,12 +103,12 @@ jobs:
           ref: e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882
           path: .test-artifacts/cpa-src
           persist-credentials: false
-      - name: Real CPA integration (Linux)
-        if: runner.os == 'Linux'
+      - name: Real CPA integration (Linux and macOS)
+        if: runner.os != 'Windows'
         run: |
           go -C .test-artifacts/cpa-src build -o "$GITHUB_WORKSPACE/.test-artifacts/cpa-host" ./cmd/server
           export CPA_TEST_BIN="$GITHUB_WORKSPACE/.test-artifacts/cpa-host"
-          export CPA_TEST_PLUGIN="$GITHUB_WORKSPACE/dist/${{ matrix.platform }}/newapi-checkin.so"
+          export CPA_TEST_PLUGIN="$GITHUB_WORKSPACE/dist/${{ matrix.platform }}/${{ matrix.library }}"
           go test -tags=integration ./tests/integration -count=1 -v -timeout=5m
       - name: Real CPA integration (Windows)
         if: runner.os == 'Windows'
@@ -101,7 +122,8 @@ jobs:
           go test -tags=integration ./tests/integration -count=1 -v -timeout=5m
           if ($LASTEXITCODE -ne 0) { throw 'CPA integration failed' }
       - name: Package release asset
-        run: python scripts/package-release.py --platform ${{ matrix.platform }}
+        shell: bash
+        run: ${{ matrix.python }} scripts/package-release.py --platform ${{ matrix.platform }}
       - name: Upload verified package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -123,18 +145,7 @@ jobs:
           merge-multiple: true
           path: dist/bundle
       - name: Generate complete checksum file
-        shell: python
-        run: |
-          import hashlib
-          from pathlib import Path
-          version = Path('VERSION').read_text().strip()
-          folder = Path('dist/bundle') / version
-          expected = {f'newapi-checkin_{version}_{platform}.zip' for platform in ('windows_amd64', 'linux_amd64', 'linux_arm64')}
-          actual = {path.name for path in folder.glob('*.zip')}
-          if actual != expected:
-              raise SystemExit(f'Incomplete release assets: expected {sorted(expected)}, got {sorted(actual)}')
-          lines = [f'{hashlib.sha256((folder / name).read_bytes()).hexdigest()}  {name}\n' for name in sorted(expected)]
-          (folder / 'checksums.txt').write_text(''.join(lines), encoding='utf-8')
+        run: python3 scripts/package-release.py --bundle-dir dist/bundle
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: newapi-checkin-release-bundle

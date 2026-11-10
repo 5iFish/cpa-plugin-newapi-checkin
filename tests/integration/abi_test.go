@@ -28,8 +28,11 @@ func TestABI(t *testing.T) {
 	_ = os.MkdirAll(plugins, 0700)
 	_ = os.MkdirAll(auth, 0700)
 	ext := ".so"
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		ext = ".dll"
+	case "darwin":
+		ext = ".dylib"
 	}
 	build := exec.Command("go", "build", "-tags=abiprobe", "-buildmode=c-shared", "-o", filepath.Join(plugins, "newapi-checkin"+ext), ".")
 	build.Dir = filepath.Join("..", "..")

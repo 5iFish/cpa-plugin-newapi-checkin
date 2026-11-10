@@ -103,7 +103,7 @@ func TestReviewRecheckDoesNotRestoreMissingWriteScope(t *testing.T) {
 		}
 		original.ServeHTTP(w, r)
 	})
-	_, err = f.s.client.Checkin(ctx, f.server.URL, "nap_test-secret")
+	_, err = f.s.client.Checkin(ctx, f.server.URL, "nap_test-secret", 1)
 	if core.ErrorKind(err) != "permission_denied" {
 		t.Fatal(err)
 	}

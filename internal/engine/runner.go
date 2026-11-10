@@ -42,7 +42,7 @@ func (r *Runner) attempt(ctx context.Context, id string, queryOnly bool, workID 
 			if *info.TurnstileCheck {
 				return core.Error("turnstile_blocked")
 			}
-			stats, e := r.client.CheckinStatus(ctx, a.Site, bearer, "")
+			stats, e := r.client.CheckinStatus(ctx, a.Site, bearer, "", a.UpstreamUserID)
 			if e != nil {
 				return e
 			}
@@ -81,11 +81,11 @@ func (r *Runner) attempt(ctx context.Context, id string, queryOnly bool, workID 
 				return e
 			}
 			result.NeedsReconcile = true
-			checkin, e := r.client.Checkin(ctx, a.Site, bearer)
+			checkin, e := r.client.Checkin(ctx, a.Site, bearer, a.UpstreamUserID)
 			if e != nil {
 				k := core.ErrorKind(e)
 				if k == "already" {
-					stats, e = r.client.CheckinStatus(ctx, a.Site, bearer, "")
+					stats, e = r.client.CheckinStatus(ctx, a.Site, bearer, "", a.UpstreamUserID)
 					if e == nil && stats.CheckedInToday {
 						result.Status = "already"
 						result.NeedsReconcile = false
@@ -102,7 +102,7 @@ func (r *Runner) attempt(ctx context.Context, id string, queryOnly bool, workID 
 			result.ServerDate = checkin.Date
 			result.QuotaAwarded = checkin.QuotaAwarded
 			result.NeedsReconcile = false
-			final, statErr := r.client.CheckinStatus(ctx, a.Site, bearer, "")
+			final, statErr := r.client.CheckinStatus(ctx, a.Site, bearer, "", a.UpstreamUserID)
 			return r.state.Update(func(s *state.Snapshot) error {
 				ar := s.Accounts[id]
 				ar.WritePermissionVerified = true

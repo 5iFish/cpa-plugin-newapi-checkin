@@ -3,12 +3,13 @@ package newapi
 import (
 	"bytes"
 	"context"
-	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"encoding/json"
+	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -121,8 +122,16 @@ func (c *Client) Probe(ctx context.Context, site string) (core.SiteInfo, error) 
 	}
 	return v, e
 }
-func (c *Client) Self(ctx context.Context, site, bearer string) (core.Identity, error) {
-	b, _, e := c.request(ctx, site, "/api/user/self", "GET", bearer, nil, nil)
+func userHeaders(userID int64) http.Header {
+	if userID <= 0 {
+		return nil
+	}
+	h := make(http.Header)
+	h.Set("New-Api-User", strconv.FormatInt(userID, 10))
+	return h
+}
+func (c *Client) Self(ctx context.Context, site, bearer string, userID int64) (core.Identity, error) {
+	b, _, e := c.request(ctx, site, "/api/user/self", "GET", bearer, nil, userHeaders(userID))
 	var v core.Identity
 	if e == nil {
 		if json.Unmarshal(b, &v) != nil || v.ID <= 0 || v.Username == "" {
@@ -131,7 +140,7 @@ func (c *Client) Self(ctx context.Context, site, bearer string) (core.Identity, 
 	}
 	return v, e
 }
-func (c *Client) CheckinStatus(ctx context.Context, site, bearer, month string) (core.CheckinStatus, error) {
+func (c *Client) CheckinStatus(ctx context.Context, site, bearer, month string, userID int64) (core.CheckinStatus, error) {
 	path := "/api/user/checkin"
 	if month != "" {
 		if _, e := time.Parse("2006-01", month); e != nil {
@@ -139,7 +148,7 @@ func (c *Client) CheckinStatus(ctx context.Context, site, bearer, month string) 
 		}
 		path += "?month=" + url.QueryEscape(month)
 	}
-	b, _, e := c.request(ctx, site, path, "GET", bearer, nil, nil)
+	b, _, e := c.request(ctx, site, path, "GET", bearer, nil, userHeaders(userID))
 	if e != nil {
 		return core.CheckinStatus{}, e
 	}
@@ -160,8 +169,8 @@ func (c *Client) CheckinStatus(ctx context.Context, site, bearer, month string) 
 	}
 	return core.CheckinStatus{CheckedInToday: *v.Stats.Checked, TotalQuota: *v.Stats.Total, TotalCheckins: *v.Stats.Count, Records: v.Stats.Records}, nil
 }
-func (c *Client) Checkin(ctx context.Context, site, bearer string) (core.CheckinRecord, error) {
-	b, _, e := c.request(ctx, site, "/api/user/checkin", "POST", bearer, map[string]any{}, nil)
+func (c *Client) Checkin(ctx context.Context, site, bearer string, userID int64) (core.CheckinRecord, error) {
+	b, _, e := c.request(ctx, site, "/api/user/checkin", "POST", bearer, map[string]any{}, userHeaders(userID))
 	var v struct {
 		Date  string `json:"checkin_date"`
 		Quota *int64 `json:"quota_awarded"`

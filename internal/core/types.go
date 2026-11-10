@@ -60,6 +60,7 @@ type SessionBundle struct {
 	Identity                  Identity
 }
 type AccountSummary struct {
+	UpstreamUserID          int64          `json:"upstream_user_id"`
 	ID                      string         `json:"account_id"`
 	Site                    string         `json:"site"`
 	Username                string         `json:"username"`

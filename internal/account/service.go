@@ -2,16 +2,17 @@ package account
 
 import (
 	"context"
+	"errors"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/credential"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/newapi"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
-	"errors"
 	"strings"
 	"time"
 )
 
 type BindInput struct {
+	UpstreamUserID            int64  `json:"upstream_user_id"`
 	Site                      string `json:"site"`
 	Label                     string `json:"label"`
 	Channel                   string `json:"channel"`
@@ -42,7 +43,7 @@ func (s *Service) Bind(ctx context.Context, in BindInput) (out core.AccountSumma
 		if e != nil {
 			return e
 		}
-		if len(in.Label) > 256 {
+		if len(in.Label) > 256 || in.UpstreamUserID < 0 {
 			return core.Error("invalid_input")
 		}
 		if in.Channel == "refresh_cookie" && !in.DedicatedSessionConfirmed {
@@ -169,11 +170,22 @@ func (s *Service) Bind(ctx context.Context, in BindInput) (out core.AccountSumma
 		if c.Kind == "session" {
 			bearer = c.AccessToken
 		}
-		verified, e := s.client.Self(ctx, site, bearer)
+		userID := in.UpstreamUserID
+		if userID == 0 && identity.ID > 0 {
+			userID = identity.ID
+		}
+		if userID == 0 && in.AccountID != "" {
+			if previous, ok := old[in.AccountID]; ok {
+				userID = previous.UpstreamUserID
+			} else {
+				userID = s.state.Read().Accounts[in.AccountID].UpstreamUserID
+			}
+		}
+		verified, e := s.client.Self(ctx, site, bearer, userID)
 		if e != nil {
 			return e
 		}
-		if identity.ID != 0 && identity.ID != verified.ID {
+		if (identity.ID != 0 && identity.ID != verified.ID) || (userID != 0 && userID != verified.ID) {
 			return core.Error("identity_mismatch")
 		}
 		identity = verified
@@ -187,7 +199,7 @@ func (s *Service) Bind(ctx context.Context, in BindInput) (out core.AccountSumma
 		} else if *info.TurnstileCheck {
 			status = "turnstile_blocked"
 		}
-		stats, e := s.client.CheckinStatus(ctx, site, bearer, "")
+		stats, e := s.client.CheckinStatus(ctx, site, bearer, "", identity.ID)
 		statsOK := e == nil
 		if e != nil {
 			if core.ErrorKind(e) == "not_enabled" {
@@ -278,7 +290,7 @@ func (s *Service) Recheck(ctx context.Context, id string) (out core.AccountSumma
 			if info.TurnstileCheck == nil {
 				return core.Error("unsupported_site")
 			}
-			identity, e := s.client.Self(ctx, a.Site, bearer)
+			identity, e := s.client.Self(ctx, a.Site, bearer, a.UpstreamUserID)
 			if e != nil {
 				return e
 			}
@@ -289,7 +301,7 @@ func (s *Service) Recheck(ctx context.Context, id string) (out core.AccountSumma
 			if *info.TurnstileCheck {
 				status = "turnstile_blocked"
 			}
-			stats, e := s.client.CheckinStatus(ctx, a.Site, bearer, "")
+			stats, e := s.client.CheckinStatus(ctx, a.Site, bearer, "", a.UpstreamUserID)
 			statsOK := e == nil
 			if e != nil {
 				if core.ErrorKind(e) != "not_enabled" {
