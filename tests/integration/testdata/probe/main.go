@@ -81,6 +81,9 @@ func (p *Probe) run() {
 		result = err.Error()
 	}
 	if path := os.Getenv("NEWAPI_CHECKIN_PROBE_RESULT"); path != "" {
-		_ = os.WriteFile(path, []byte(result), 0600)
+		// Publish only the complete result; the test polls this path concurrently.
+		if err := os.WriteFile(path+".tmp", []byte(result), 0600); err == nil {
+			_ = os.Rename(path+".tmp", path)
+		}
 	}
 }

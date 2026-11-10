@@ -109,7 +109,7 @@ jobs:
           go -C .test-artifacts/cpa-src build -o "$GITHUB_WORKSPACE/.test-artifacts/cpa-host" ./cmd/server
           export CPA_TEST_BIN="$GITHUB_WORKSPACE/.test-artifacts/cpa-host"
           export CPA_TEST_PLUGIN="$GITHUB_WORKSPACE/dist/${{ matrix.platform }}/${{ matrix.library }}"
-          go test -tags=integration ./tests/integration -count=1 -v -timeout=5m
+          go test -tags=integration ./tests/integration -count=1 -v -failfast -timeout=5m
       - name: Real CPA integration (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -119,7 +119,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'CPA host build failed' }
           $env:CPA_TEST_BIN = $hostPath
           $env:CPA_TEST_PLUGIN = Join-Path $PWD 'dist/windows-amd64/newapi-checkin.dll'
-          go test -tags=integration ./tests/integration -count=1 -v -timeout=5m
+          go test -tags=integration ./tests/integration -count=1 -v -failfast -timeout=5m
           if ($LASTEXITCODE -ne 0) { throw 'CPA integration failed' }
       - name: Package release asset
         shell: bash
