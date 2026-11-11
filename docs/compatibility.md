@@ -2,6 +2,10 @@
 
 [简体中文 README](../README.md) · [English README](../README.en.md)
 
+v0.1.2 六平台验证正在进行；下表保留 v0.1.1 的已完成记录，不能作为 Windows ARM64 已通过的证据。
+
+v0.1.2 six-platform verification is in progress. The table below records v0.1.1 and does not establish Windows ARM64 support.
+
 插件使用 CPA C ABI。v0.1.1 的五个平台均在原生环境中通过 CPA v8.0.58 的构建和集成测试，宿主固定提交为 `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`。其他 CPA 版本需保持兼容的插件 ABI。
 
 The plugin uses CPA's C ABI. All five v0.1.1 platforms passed native builds and integration tests with CPA v8.0.58, pinned to commit `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`. Other CPA versions must retain the compatible ABI.
@@ -22,9 +26,9 @@ Evidence: [five-platform native CI](https://github.com/5iFish/cpa-plugin-newapi-
 
 Additional validation: local integration passed on Windows 11 x64 with CPA v8.0.58. An earlier build was deployed with CPA v8.0.52 on ARM64 in a Debian 12 / glibc 2.36 container; that historical deployment is separate from the v0.1.1 native CI results above.
 
-Linux artifacts require glibc 2.34 or newer according to their imported symbols. This is a minimum symbol requirement, not a claim that every distribution at that version has been tested. Alpine/musl failed real loading with a TLS relocation error and is not supported. ARM64 does not include 32-bit ARM; Windows ARM64 is not provided.
+Linux artifacts require glibc 2.34 or newer according to their imported symbols. This is a minimum symbol requirement, not a claim that every distribution at that version has been tested. Alpine/musl failed real loading with a TLS relocation error and is not supported. ARM64 does not include 32-bit ARM; Windows ARM64 is being added in v0.1.2 and requires native validation.
 
-Linux 产物所引用的 glibc 符号最高版本为 2.34；这是符号依赖下限，不代表已测试所有发行版。Alpine/musl 在实际加载时出现 TLS 重定位错误，未列入支持范围。ARM64 不包含 32 位 ARM，也不提供 Windows ARM64 产物。
+Linux 产物所引用的 glibc 符号最高版本为 2.34；这是符号依赖下限，不代表已测试所有发行版。Alpine/musl 在实际加载时出现 TLS 重定位错误，未列入支持范围。ARM64 不包含 32 位 ARM，Windows ARM64 正在 v0.1.2 中补充，需完成原生验证。
 
 Real CPA integration workflows validate registration, background credential callbacks, account binding, refresh persistence, session expiry, ambiguous refresh outcomes, lost check-in responses/restart recovery, deletion, and shutdown/reconfiguration. Windows symlink-specific coverage may be skipped where symlink creation is unavailable; it is exercised on Linux.
 

@@ -1,5 +1,13 @@
 # Changelog / 更新记录
 
+## v0.1.2 — 2026-11-11
+
+- 新增 Windows ARM64 原生构建、PE 架构校验与真实 CPA 集成验证工作流。
+- 发布汇总必须包含六个平台安装包及 SHA-256 校验值；缺少 Windows ARM64 时拒绝汇总。
+- Add native Windows ARM64 builds, PE architecture validation, and real CPA integration workflow.
+- Require all six platform archives before generating release checksums.
+- Validation is in progress; completed results will be recorded before publication.
+
 ## v0.1.1 — 2026-11-10
 
 - 支持可选站点用户 ID，为要求 `New-Api-User` 的站点补齐绑定、复查和签到请求；拒绝与令牌身份不一致的 ID。

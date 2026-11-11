@@ -8,15 +8,16 @@
 
 ## 下载
 
-**v0.1.1** 提供以下五个原生安装包，Windows、Linux 和 macOS 均已通过原生构建与真实 CPA 集成验证。可从页面顶部“下载正式版”获取。`amd64` 即 `x86_64 / x64`，`arm64` 即 `aarch64`，不包含 32 位 ARM。
+**v0.1.2** 计划提供以下六个原生安装包；v0.1.2 的六平台原生构建与真实 CPA 集成验证正在进行。可从页面顶部“下载正式版”获取。`amd64` 即 `x86_64 / x64`，`arm64` 即 `aarch64`，不包含 32 位 ARM。
 
 | 平台 | Release 下载文件 | ZIP 内的插件文件 |
 | --- | --- | --- |
-| Windows x64 | `newapi-checkin_0.1.1_windows_amd64.zip` | `newapi-checkin.dll` |
-| Linux x86_64 | `newapi-checkin_0.1.1_linux_amd64.zip` | `newapi-checkin.so` |
-| Linux ARM64 | `newapi-checkin_0.1.1_linux_arm64.zip` | `newapi-checkin.so` |
-| macOS Intel | `newapi-checkin_0.1.1_darwin_amd64.zip` | `newapi-checkin.dylib` |
-| macOS Apple Silicon（M 系列） | `newapi-checkin_0.1.1_darwin_arm64.zip` | `newapi-checkin.dylib` |
+| Windows x64 | `newapi-checkin_0.1.2_windows_amd64.zip` | `newapi-checkin.dll` |
+| Windows ARM64 | `newapi-checkin_0.1.2_windows_arm64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.1.2_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.1.2_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.1.2_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon（M 系列） | `newapi-checkin_0.1.2_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
 每个正式版本附带 `checksums.txt`，请从同一个 Release 下载安装包与校验文件。Linux 可运行 `sha256sum -c checksums.txt --ignore-missing`；macOS 可运行 `shasum -a 256 <安装包>`，Windows 可运行 `Get-FileHash -Algorithm SHA256 <安装包>`，对照文件内的校验值。
 
@@ -28,7 +29,7 @@ macOS 构建以 **macOS 15** 为默认目标。Intel 和 Apple Silicon 使用独
 
 本项目使用 CPA C ABI 动态库，不是 Go 的 `plugin` 包。Windows 加载 `.dll`，glibc Linux 加载 `.so`，macOS 加载 `.dylib`。源码依赖锁定 **CPA v8.0.58**，提交 `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`。NewAPI 接口对照提交 `a3fd673bb7897691b1041aaf8d78bab6cc15e1d5`；定制版和旧版需要满足相同接口契约。
 
-1. 解压安装包，将动态库放进 CPA 插件目录内对应的平台子目录：`plugins/windows/amd64/newapi-checkin.dll`、`plugins/linux/amd64/newapi-checkin.so`、`plugins/linux/arm64/newapi-checkin.so`、`plugins/darwin/amd64/newapi-checkin.dylib` 或 `plugins/darwin/arm64/newapi-checkin.dylib`。
+1. 解压安装包，将动态库放进 CPA 插件目录内对应的平台子目录：`plugins/windows/amd64/newapi-checkin.dll`、`plugins/windows/arm64/newapi-checkin.dll`、`plugins/linux/amd64/newapi-checkin.so`、`plugins/linux/arm64/newapi-checkin.so`、`plugins/darwin/amd64/newapi-checkin.dylib` 或 `plugins/darwin/arm64/newapi-checkin.dylib`。
 2. 在 CPA 配置中启用插件。以下是固定版本支持的配置结构；已有服务只需合并 `plugins` 部分，不必覆盖现有管理密钥。
 
 ```yaml
@@ -107,7 +108,7 @@ plugins:
 
 需要 **Go 1.26.10 或更高版本**和目标平台的 C 编译器。模块依赖在 `go.mod/go.sum` 锁定，构建脚本禁用开发机 `go.work`。
 
-Windows PowerShell：
+Windows PowerShell（amd64 使用 MinGW UCRT GCC；ARM64 使用 MSYS2 CLANGARM64 的 `mingw-w64-clang-aarch64-gcc-compat`，将 `clangarm64/bin` 加入 PATH，并设置 `$env:CC="aarch64-w64-mingw32-gcc"`）：
 
 ```powershell
 $env:PATH = "C:\path\to\go\bin;C:\path\to\mingw\bin;" + $env:PATH
@@ -126,11 +127,11 @@ macOS（安装 Xcode Command Line Tools，使用 clang）：
 sh scripts/build-darwin.sh
 ```
 
-Linux/macOS 脚本自动识别本机 `amd64` / `arm64`，分别输出到 `dist/linux-<架构>/`、`dist/darwin-<架构>/`；Windows 输出到 `dist/windows-amd64/`。脚本拒绝与本机不匹配的 `GOOS/GOARCH`。macOS 默认 `MACOSX_DEPLOYMENT_TARGET=15.0`；调整该值不代表已验证其他系统版本。构建发布包还需要 Python 3（macOS/Linux 通常使用 `python3`）：
+Linux/macOS 脚本自动识别本机 `amd64` / `arm64`，分别输出到 `dist/linux-<架构>/`、`dist/darwin-<架构>/`；Windows 自动识别同样的两种架构并输出到 `dist/windows-<架构>/`。脚本拒绝与本机不匹配的 `GOOS/GOARCH`。macOS 默认 `MACOSX_DEPLOYMENT_TARGET=15.0`；调整该值不代表已验证其他系统版本。构建发布包还需要 Python 3（macOS/Linux 通常使用 `python3`）：
 
 ```sh
 python scripts/package-release.py --platform linux-amd64
-# 另可选择 linux-arm64、windows-amd64、darwin-amd64 或 darwin-arm64
+# 另可选择 linux-arm64、windows-amd64、windows-arm64、darwin-amd64 或 darwin-arm64
 ```
 
 自动化测试：

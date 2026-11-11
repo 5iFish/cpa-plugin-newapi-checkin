@@ -27,6 +27,18 @@ jobs:
             platform: windows-amd64
             library: newapi-checkin.dll
             python: python
+            msystem: UCRT64
+            compiler-package: mingw-w64-ucrt-x86_64-gcc
+            compiler-dir: ucrt64
+            cc: gcc
+          - runner: windows-11-arm
+            platform: windows-arm64
+            library: newapi-checkin.dll
+            python: python
+            msystem: CLANGARM64
+            compiler-package: mingw-w64-clang-aarch64-gcc-compat
+            compiler-dir: clangarm64
+            cc: aarch64-w64-mingw32-gcc
           - runner: ubuntu-24.04
             platform: linux-amd64
             library: newapi-checkin.so
@@ -64,13 +76,14 @@ jobs:
         if: runner.os == 'Windows'
         id: msys2
         with:
-          msystem: UCRT64
-          install: mingw-w64-ucrt-x86_64-gcc
+          msystem: ${{ matrix.msystem }}
+          install: ${{ matrix.compiler-package }}
       - name: Add Windows compiler
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          '${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          '${{ steps.msys2.outputs.msys2-location }}\${{ matrix.compiler-dir }}\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          'CC=${{ matrix.cc }}' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Check release version
         shell: bash
         run: |
@@ -118,7 +131,7 @@ jobs:
           go -C .test-artifacts/cpa-src build -o $hostPath ./cmd/server
           if ($LASTEXITCODE -ne 0) { throw 'CPA host build failed' }
           $env:CPA_TEST_BIN = $hostPath
-          $env:CPA_TEST_PLUGIN = Join-Path $PWD 'dist/windows-amd64/newapi-checkin.dll'
+          $env:CPA_TEST_PLUGIN = Join-Path $PWD 'dist/${{ matrix.platform }}/${{ matrix.library }}'
           go test -tags=integration ./tests/integration -count=1 -v -failfast -timeout=5m
           if ($LASTEXITCODE -ne 0) { throw 'CPA integration failed' }
       - name: Package release asset

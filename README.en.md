@@ -8,15 +8,16 @@ Manage accounts across NewAPI sites, schedule daily check-ins, and view credenti
 
 ## Downloads
 
-**v0.1.1** provides the five native packages below. Windows, Linux, and macOS have passed native builds and real CPA integration tests. Use the Download link above to get the release. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
+**v0.1.2** targets the six native packages below. Native builds and real CPA integration verification for v0.1.2 are in progress. Use the Download link above to get the release. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
 
 | Platform | Release asset | Plugin inside the ZIP |
 | --- | --- | --- |
-| Windows x64 | `newapi-checkin_0.1.1_windows_amd64.zip` | `newapi-checkin.dll` |
-| Linux x86_64 | `newapi-checkin_0.1.1_linux_amd64.zip` | `newapi-checkin.so` |
-| Linux ARM64 | `newapi-checkin_0.1.1_linux_arm64.zip` | `newapi-checkin.so` |
-| macOS Intel | `newapi-checkin_0.1.1_darwin_amd64.zip` | `newapi-checkin.dylib` |
-| macOS Apple Silicon (M series) | `newapi-checkin_0.1.1_darwin_arm64.zip` | `newapi-checkin.dylib` |
+| Windows x64 | `newapi-checkin_0.1.2_windows_amd64.zip` | `newapi-checkin.dll` |
+| Windows ARM64 | `newapi-checkin_0.1.2_windows_arm64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.1.2_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.1.2_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.1.2_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon (M series) | `newapi-checkin_0.1.2_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
 Download archives and `checksums.txt` from the same release. On Linux, run `sha256sum -c checksums.txt --ignore-missing`. On macOS, compare `shasum -a 256 <archive>` with the checksum file; on Windows, use `Get-FileHash -Algorithm SHA256 <archive>`.
 
@@ -28,7 +29,7 @@ macOS builds target **macOS 15** by default. Intel and Apple Silicon packages ar
 
 This is a CPA C ABI shared library, not a Go `plugin` package. The SDK dependency is pinned to **CPA v8.0.58**, commit `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`. The NewAPI API reference is commit `a3fd673bb7897691b1041aaf8d78bab6cc15e1d5`; custom and older deployments must provide the same API contract.
 
-1. Extract the archive into the appropriate platform subdirectory under CPA's plugin directory: `plugins/windows/amd64/newapi-checkin.dll`, `plugins/linux/amd64/newapi-checkin.so`, `plugins/linux/arm64/newapi-checkin.so`, `plugins/darwin/amd64/newapi-checkin.dylib`, or `plugins/darwin/arm64/newapi-checkin.dylib`.
+1. Extract the archive into the appropriate platform subdirectory under CPA's plugin directory: `plugins/windows/amd64/newapi-checkin.dll`, `plugins/windows/arm64/newapi-checkin.dll`, `plugins/linux/amd64/newapi-checkin.so`, `plugins/linux/arm64/newapi-checkin.so`, `plugins/darwin/amd64/newapi-checkin.dylib`, or `plugins/darwin/arm64/newapi-checkin.dylib`.
 2. Enable the plugin in CPA's configuration. Merge the `plugins` section into an existing installation and keep your current management key.
 
 ```yaml
@@ -105,7 +106,7 @@ Deletion checks file identity/ownership, persists a deletion marker, and retains
 
 Requires **Go 1.26.10 or newer** and a native C compiler for the target platform. Dependencies are pinned in `go.mod` / `go.sum`; build scripts ignore local `go.work` files.
 
-Windows PowerShell with MinGW GCC:
+Windows PowerShell: amd64 uses MinGW UCRT GCC. ARM64 uses MSYS2 CLANGARM64 package `mingw-w64-clang-aarch64-gcc-compat`, with `clangarm64/bin` on PATH and `$env:CC="aarch64-w64-mingw32-gcc"`:
 
 ```powershell
 $env:PATH = "C:\path\to\go\bin;C:\path\to\mingw\bin;" + $env:PATH
@@ -124,11 +125,11 @@ macOS with Xcode Command Line Tools and clang:
 sh scripts/build-darwin.sh
 ```
 
-Linux/macOS builds detect native `amd64` / `arm64` and write to `dist/linux-<arch>/` or `dist/darwin-<arch>/`; Windows writes to `dist/windows-amd64/`. Scripts reject incompatible `GOOS/GOARCH` overrides. macOS defaults to `MACOSX_DEPLOYMENT_TARGET=15.0`; overriding it does not validate other OS versions. Package with Python 3 (usually `python3` on macOS/Linux):
+Linux/macOS builds detect native `amd64` / `arm64` and write to `dist/linux-<arch>/` or `dist/darwin-<arch>/`; Windows detects the same two native architectures and writes to `dist/windows-<arch>/`. Scripts reject incompatible `GOOS/GOARCH` overrides. macOS defaults to `MACOSX_DEPLOYMENT_TARGET=15.0`; overriding it does not validate other OS versions. Package with Python 3 (usually `python3` on macOS/Linux):
 
 ```sh
 python scripts/package-release.py --platform linux-amd64
-# Other targets: linux-arm64, windows-amd64, darwin-amd64, darwin-arm64
+# Other targets: linux-arm64, windows-amd64, windows-arm64, darwin-amd64, darwin-arm64
 ```
 
 Run automated checks:

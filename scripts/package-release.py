@@ -9,7 +9,7 @@ import struct
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
-PLATFORMS = ("windows-amd64", "linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64")
+PLATFORMS = ("windows-amd64", "windows-arm64", "linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64")
 
 
 def library_name(platform):
@@ -21,7 +21,7 @@ def library_name(platform):
 
 def validate_binary(data, platform):
     library_name(platform)
-    if platform == "windows-amd64":
+    if platform.startswith("windows-"):
         if data[:2] != b"MZ" or len(data) < 64:
             raise ValueError("Expected a Windows PE library")
         offset = struct.unpack_from("<I", data, 0x3C)[0]
@@ -29,8 +29,9 @@ def validate_binary(data, platform):
             raise ValueError("Invalid PE header")
         machine = struct.unpack_from("<H", data, offset + 4)[0]
         characteristics = struct.unpack_from("<H", data, offset + 22)[0]
-        if machine != 0x8664 or not characteristics & 0x2000:
-            raise ValueError("Expected an amd64 DLL")
+        expected = 0x8664 if platform == "windows-amd64" else 0xAA64
+        if machine != expected or not characteristics & 0x2000:
+            raise ValueError("PE type/architecture does not match requested platform")
     elif platform.startswith("darwin-"):
         if len(data) < 32 or data[:4] != b"\xcf\xfa\xed\xfe":
             raise ValueError("Expected a 64-bit little-endian Mach-O library")
@@ -109,7 +110,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--platform", choices=PLATFORMS)
-    mode.add_argument("--bundle-dir", type=Path, help="Verify a downloaded five-platform artifact bundle")
+    mode.add_argument("--bundle-dir", type=Path, help="Verify a downloaded six-platform artifact bundle")
     args = parser.parse_args()
     try:
         if args.bundle_dir is not None:

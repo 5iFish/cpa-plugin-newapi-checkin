@@ -20,9 +20,35 @@ def macho64(cputype: int, filetype: int = 6) -> bytes:
     return header + bytes(64 - len(header))
 
 
+def pe64(machine: int, characteristics: int = 0x2022) -> bytes:
+    data = bytearray(128)
+    data[:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, 64)
+    data[64:68] = b"PE\0\0"
+    struct.pack_into("<H", data, 68, machine)
+    struct.pack_into("<H", data, 86, characteristics)
+    return bytes(data)
+
+
+def elf64(machine: int) -> bytes:
+    data = bytearray(64)
+    data[:6] = b"\x7fELF\x02\x01"
+    struct.pack_into("<HH", data, 16, 3, machine)
+    return bytes(data)
+
+
 class ReleasePackagingTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="newapi-package-"))
+
+    def test_windows_architectures_and_invalid_libraries(self):
+        for platform, machine, other in (("windows-amd64", 0x8664, 0xAA64), ("windows-arm64", 0xAA64, 0x8664)):
+            with self.subTest(platform=platform):
+                self.assertEqual(PACKAGE_RELEASE.library_name(platform), "newapi-checkin.dll")
+                PACKAGE_RELEASE.validate_binary(pe64(machine), platform)
+                for invalid in (pe64(other), pe64(machine, 0x22), pe64(machine)[:80], b"MZ", bytes(128)):
+                    with self.assertRaises(ValueError):
+                        PACKAGE_RELEASE.validate_binary(invalid, platform)
 
     def test_darwin_architectures_and_library_suffix(self):
         self.assertEqual(PACKAGE_RELEASE.library_name("darwin-amd64"), "newapi-checkin.dylib")
@@ -38,16 +64,17 @@ class ReleasePackagingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PACKAGE_RELEASE.validate_binary(b"\xCF\xFA\xED\xFE", "darwin-amd64")
 
-    def test_package_contains_dylib_and_manifest(self):
-        for platform, cpu in (("darwin-amd64", 0x01000007), ("darwin-arm64", 0x0100000C)):
+    def test_package_contains_native_library_and_manifest(self):
+        for platform, cpu in (("darwin-amd64", 0x01000007), ("darwin-arm64", 0x0100000C), ("windows-amd64", 0x8664), ("windows-arm64", 0xAA64), ("linux-amd64", 62), ("linux-arm64", 183)):
             root = self.root
             (root / "VERSION").write_text("0.1.1\n", encoding="utf-8")
             for name in ("README.md", "README.en.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md"):
                 (root / name).write_text(name, encoding="utf-8")
             (root / "docs").mkdir(exist_ok=True)
             (root / "docs" / "compatibility.md").write_text("compatibility", encoding="utf-8")
-            binary = macho64(cpu)
-            output = root / "dist" / platform / "newapi-checkin.dylib"
+            library = "newapi-checkin" + {"windows": ".dll", "darwin": ".dylib", "linux": ".so"}[platform.split("-")[0]]
+            binary = pe64(cpu) if platform.startswith("windows") else elf64(cpu) if platform.startswith("linux") else macho64(cpu)
+            output = root / "dist" / platform / library
             output.parent.mkdir(parents=True)
             output.write_bytes(binary)
 
@@ -56,21 +83,22 @@ class ReleasePackagingTests(unittest.TestCase):
             self.assertEqual(archive.name, "newapi-checkin_0.1.1_" + platform.replace("-", "_") + ".zip")
             with zipfile.ZipFile(archive) as bundle:
                 self.assertEqual(bundle.testzip(), None)
-                self.assertEqual(bundle.read("newapi-checkin.dylib"), binary)
+                self.assertEqual(bundle.read(library), binary)
                 manifest = json.loads(bundle.read("manifest.json"))
-                self.assertEqual(manifest["goos"], "darwin")
+                self.assertEqual(manifest["goos"], platform.split("-")[0])
                 self.assertEqual(manifest["goarch"], platform.split("-")[1])
-                self.assertEqual(manifest["library"], "newapi-checkin.dylib")
+                self.assertEqual(manifest["library"], library)
                 self.assertEqual(manifest["library_sha256"], hashlib.sha256(binary).hexdigest())
-                self.assertEqual([n for n in bundle.namelist() if n.endswith((".so", ".dll", ".dylib"))], ["newapi-checkin.dylib"])
+                self.assertEqual([n for n in bundle.namelist() if n.endswith((".so", ".dll", ".dylib"))], [library])
 
-    def test_collect_release_requires_exact_five_platforms(self):
+    def test_collect_release_requires_exact_six_platforms(self):
         with self.subTest("complete and missing"):
             root = self.root
             version_dir = root / "0.1.1"
             version_dir.mkdir()
             expected = {
                 "newapi-checkin_0.1.1_windows_amd64.zip",
+                "newapi-checkin_0.1.1_windows_arm64.zip",
                 "newapi-checkin_0.1.1_linux_amd64.zip",
                 "newapi-checkin_0.1.1_linux_arm64.zip",
                 "newapi-checkin_0.1.1_darwin_amd64.zip",
@@ -83,7 +111,7 @@ class ReleasePackagingTests(unittest.TestCase):
 
             self.assertEqual(checksums, version_dir / "checksums.txt")
             lines = checksums.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(lines), 5)
+            self.assertEqual(len(lines), 6)
             self.assertEqual(
                 {line.split("  ", 1)[1] for line in lines},
                 expected,
@@ -92,7 +120,7 @@ class ReleasePackagingTests(unittest.TestCase):
                 digest, name = line.split("  ", 1)
                 self.assertEqual(digest, hashlib.sha256((version_dir / name).read_bytes()).hexdigest())
 
-            missing = version_dir / "newapi-checkin_0.1.1_darwin_arm64.zip"
+            missing = version_dir / "newapi-checkin_0.1.1_windows_arm64.zip"
             missing.rename(missing.with_suffix(".pending"))
             with self.assertRaises(ValueError):
                 PACKAGE_RELEASE.collect_release_bundle(root, "0.1.1")
