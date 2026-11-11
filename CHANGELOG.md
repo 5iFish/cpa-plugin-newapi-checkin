@@ -6,7 +6,8 @@
 - 发布汇总必须包含六个平台安装包及 SHA-256 校验值；缺少 Windows ARM64 时拒绝汇总。
 - Add native Windows ARM64 builds, PE architecture validation, and real CPA integration workflow.
 - Require all six platform archives before generating release checksums.
-- Validation is in progress; completed results will be recorded before publication.
+- 六平台均通过全部 9 项真实 CPA 集成测试；验证记录：[native CI](https://github.com/5iFish/cpa-plugin-newapi-checkin/actions/runs/42950149076)。
+- All six native platforms passed all nine real CPA integration tests without skips; see the linked evidence.
 
 ## v0.1.1 — 2026-11-10
 

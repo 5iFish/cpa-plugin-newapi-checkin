@@ -8,7 +8,7 @@ Manage accounts across NewAPI sites, schedule daily check-ins, and view credenti
 
 ## Downloads
 
-**v0.1.2** targets the six native packages below. Native builds and real CPA integration verification for v0.1.2 are in progress. Use the Download link above to get the release. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
+**v0.1.2** provides the six native packages below. All six passed native builds and real CPA integration verification (nine integration tests per platform). Use the Download link above to get the release. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
 
 | Platform | Release asset | Plugin inside the ZIP |
 | --- | --- | --- |
