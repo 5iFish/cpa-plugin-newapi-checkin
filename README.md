@@ -177,3 +177,7 @@ CPA_TEST_BIN=/absolute/path/to/cpa GOWORK=off CGO_ENABLED=1 go test -p=2 -tags=i
 ## 许可证
 
 [MIT](LICENSE)。随包第三方组件的许可见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
+
+## 友情链接
+
+- [linux.do](https://linux.do/u/runtimexception/)
