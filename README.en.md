@@ -8,16 +8,16 @@ Manage accounts across NewAPI sites, schedule daily check-ins, and view credenti
 
 ## Downloads
 
-**v0.2.0** is built separately for the six native platforms below. The release workflow runs native builds and real CPA integration tests on every platform and collects archives and checksums only after all jobs pass. Use the Download link above; verification records are in the [compatibility notes](docs/compatibility.md). `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
+**v0.2.1** is built separately for the six native platforms below. The release workflow runs native builds and real CPA integration tests on every platform and collects archives and checksums only after all jobs pass. Use the Download link above; verification records are in the [compatibility notes](docs/compatibility.md). `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
 
 | Platform | Release asset | Plugin inside the ZIP |
 | --- | --- | --- |
-| Windows x64 | `newapi-checkin_0.2.0_windows_amd64.zip` | `newapi-checkin.dll` |
-| Windows ARM64 | `newapi-checkin_0.2.0_windows_arm64.zip` | `newapi-checkin.dll` |
-| Linux x86_64 | `newapi-checkin_0.2.0_linux_amd64.zip` | `newapi-checkin.so` |
-| Linux ARM64 | `newapi-checkin_0.2.0_linux_arm64.zip` | `newapi-checkin.so` |
-| macOS Intel | `newapi-checkin_0.2.0_darwin_amd64.zip` | `newapi-checkin.dylib` |
-| macOS Apple Silicon (M series) | `newapi-checkin_0.2.0_darwin_arm64.zip` | `newapi-checkin.dylib` |
+| Windows x64 | `newapi-checkin_0.2.1_windows_amd64.zip` | `newapi-checkin.dll` |
+| Windows ARM64 | `newapi-checkin_0.2.1_windows_arm64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.2.1_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.2.1_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.2.1_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon (M series) | `newapi-checkin_0.2.1_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
 Download archives and `checksums.txt` from the same release. On Linux, run `sha256sum -c checksums.txt --ignore-missing`. On macOS, compare `shasum -a 256 <archive>` with the checksum file; on Windows, use `Get-FileHash -Algorithm SHA256 <archive>`.
 
@@ -52,6 +52,12 @@ plugins:
 Static UI assets are public; account and task data require authentication through `/v0/management/plugins/newapi-checkin/…`. Use HTTPS for remote management.
 
 The console's "refresh balances" action only refreshes each account's wallet balance; model usage lives in the statistics panel above the account list, which aggregates the bound accounts' site logs for 24h / 7d / 30d: the left card shows token shares by account or model, the right card a per-bucket stacked model chart and ranking, including cache rate, request counts, converted cost and average RPM/TPM. Results are cached per range in the state file and fetched live only when switching ranges or clicking "refresh statistics"; data comes from the site's own consumption log `/api/log/self`, aggregates only, no request details, and a failed log read only drops that account from the statistics. The bundled management UI currently uses Chinese; this repository provides both Chinese and English documentation.
+
+### Per-account request status
+
+Each account has a full-width timeline below its information row: 48 blocks of 30 minutes covering the last 24 hours. It aggregates that account's `/api/log/self` consumption (`type=2`) and error (`type=5`) records. Green means consumption with no recorded errors, mixed records use a success-ratio color gradient, red means errors only, and gray means no records. Unsupported responses, failed reads, or the 2,000-entry cap per log type show an unknown/incomplete striped state rather than a fabricated rate. Hover, tap, or use keyboard arrow keys for bucket details.
+
+The visible accounts page checks the five-minute cache and starts bounded background refreshes; "刷新请求状态" forces a refresh. Status polling reads cache only, and the usage chart's range does not change this 24-hour window. Failed refreshes retain the old window marked stale; rebinds and deletion invalidate account health. No model probes are sent. **The record success ratio is not uptime:** site errors may include retry attempts or omit failures, and an empty error log does not prove no failures occurred. Only timestamps and counters are retained, not raw logs, error bodies, token names, or IP addresses.
 
 ## Account authentication
 

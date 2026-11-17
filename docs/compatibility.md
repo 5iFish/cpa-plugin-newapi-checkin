@@ -2,11 +2,11 @@
 
 [简体中文 README](../README.md) · [English README](../README.en.md)
 
-插件使用 CPA C ABI。v0.2.0 沿用下表的六平台发布工作流，在每个平台执行原生构建、单元测试、静态检查、UI、打包及真实 CPA 集成测试；全部通过后才生成完整发布包和校验值，具体运行记录见该版本的 GitHub Release。以下链接和已完成的验证记录对应 v0.1.2，不替代 v0.2.0 的发布验证。
+插件使用 CPA C ABI。v0.2.1 沿用下表的六平台发布工作流，在每个平台执行原生构建、单元测试、静态检查、UI、打包及真实 CPA 集成测试；全部通过后才生成完整发布包和校验值，具体运行记录见该版本的 GitHub Release。以下链接和已完成的验证记录对应 v0.1.2，不替代 v0.2.1 的发布验证。
 
 v0.1.2 的六个平台均通过原生构建、单元测试、静态检查、UI 和打包测试，以及全部 9 项真实 CPA 集成测试，无集成测试跳过。CPA v8.0.58 宿主固定提交为 `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`。其他 CPA 版本需保持兼容的插件 ABI。
 
-v0.2.0 retains the six-platform release workflow below: native builds, unit tests, vet, UI, packaging, and real CPA integration tests run on each platform before a complete bundle and checksums are produced. The version's GitHub Release links its verification run. The completed records linked below belong to v0.1.2 and do not substitute for v0.2.0 release verification.
+v0.2.1 retains the six-platform release workflow below: native builds, unit tests, vet, UI, packaging, and real CPA integration tests run on each platform before a complete bundle and checksums are produced. The version's GitHub Release links its verification run. The completed records linked below belong to v0.1.2 and do not substitute for v0.2.1 release verification.
 
 All six v0.1.2 platforms passed native builds, unit tests, vet, UI and packaging tests, and all nine real CPA integration tests without skips. The CPA v8.0.58 host is pinned to `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`; other CPA versions must retain the compatible C ABI.
 

@@ -28,6 +28,7 @@ type App struct {
 	inflight            sync.WaitGroup
 	state               *state.Store
 	handler             *console.Handler
+	accounts            *account.Service
 	scheduler           *engine.Scheduler
 	defaults, effective config.Settings
 	initError           error
@@ -50,6 +51,8 @@ func (a *App) init() error {
 	client := newapi.NewClient(nil)
 	broker := credential.NewBroker(repo, s, client, gate, time.Now)
 	accounts := account.NewService(repo, s, client, broker, gate)
+	accounts.StartHealth(a.root)
+	a.accounts = accounts
 	clock := core.RealClock{}
 	location := func() *time.Location {
 		a.mu.RLock()
@@ -103,6 +106,9 @@ func (a *App) Handle(ctx context.Context, method string, body json.RawMessage) (
 		if a.closed {
 			a.root, a.cancel = context.WithCancel(context.Background())
 			a.closed = false
+			if a.accounts != nil {
+				a.accounts.StartHealth(a.root)
+			}
 		}
 		if a.state == nil {
 			a.mu.Unlock()
@@ -215,8 +221,13 @@ func (a *App) Close(ctx context.Context) error {
 	a.mu.Lock()
 	a.closed = true
 	a.cancel()
-	scheduler := a.scheduler
+	scheduler, accounts := a.scheduler, a.accounts
 	a.mu.Unlock()
+	if accounts != nil {
+		if err := accounts.ShutdownHealth(ctx); err != nil {
+			return err
+		}
+	}
 	// Stop the workers before releasing the instance callback in main.
 	// An in-flight settings rollback must finish before the final shutdown.
 	a.settingsMu.Lock()

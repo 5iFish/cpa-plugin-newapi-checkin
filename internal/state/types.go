@@ -134,7 +134,9 @@ type Snapshot struct {
 	// Stats caches the last console statistics payload per range key
 	// ("24h"/"7d"/"30d"). Aggregates only; no log details.
 	Stats map[string]core.StatsSummary `json:"stats,omitempty"`
-	Error string                       `json:"error,omitempty"`
+	// Health caches per-account site log counters; no raw requests or secrets.
+	Health map[string]core.AccountHealth `json:"health,omitempty"`
+	Error  string                        `json:"error,omitempty"`
 }
 
 func (s *Snapshot) init() {
@@ -161,6 +163,9 @@ func (s *Snapshot) init() {
 	}
 	if s.Stats == nil {
 		s.Stats = map[string]core.StatsSummary{}
+	}
+	if s.Health == nil {
+		s.Health = map[string]core.AccountHealth{}
 	}
 	if s.History == nil {
 		s.History = []HistoryEntry{}

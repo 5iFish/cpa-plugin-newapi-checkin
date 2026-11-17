@@ -2,12 +2,12 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/abi"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/config"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/testutil"
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -32,7 +32,7 @@ func TestApplicationOnlyManagement(t *testing.T) {
 		t.Fatal(e)
 	}
 	var routes abi.Routes
-	if json.Unmarshal(b, &routes) != nil || len(routes.Routes) != 9 {
+	if json.Unmarshal(b, &routes) != nil || len(routes.Routes) != 11 {
 		t.Fatal(string(b))
 	}
 }

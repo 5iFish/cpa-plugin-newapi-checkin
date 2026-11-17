@@ -175,7 +175,37 @@ func (h *Handler) Handle(ctx context.Context, req pluginapi.ManagementRequest) (
 				return a.ID < b.ID
 			}
 		})
-		result = map[string]any{"accounts": accounts, "jobs": s.Jobs, "work_items": s.WorkItems, "history": s.History, "schedules": s.Schedules, "settings": h.Settings(), "overrides": s.SettingsOverrides, "error": s.Error}
+		result = map[string]any{"accounts": accounts, "jobs": s.Jobs, "work_items": s.WorkItems, "history": s.History, "schedules": s.Schedules, "settings": h.Settings(), "overrides": s.SettingsOverrides, "error": s.Error, "health": h.healthStatus()}
+	case "GET " + Base + "/health":
+		if len(req.Query) != 0 || len(req.Body) != 0 {
+			err = core.Error("invalid_input")
+			break
+		}
+		result = map[string]any{"health": h.healthStatus()}
+	case "POST " + Base + "/health":
+		var in struct {
+			Refresh bool `json:"refresh"`
+		}
+		if len(req.Query) != 0 {
+			err = core.Error("invalid_input")
+			break
+		}
+		if err = decode(req.Body, &in); err != nil {
+			break
+		}
+		if h.accounts == nil {
+			err = core.Error("disabled")
+			break
+		}
+		var started bool
+		started, err = h.accounts.RefreshHealth(ctx, in.Refresh)
+		if err == nil {
+			health := h.healthStatus()
+			if started || health.Refreshing {
+				status = http.StatusAccepted
+			}
+			result = map[string]any{"health": health}
+		}
 	case "GET " + Base + "/probe":
 		provider := req.Query.Get("provider")
 		if len(req.Query) != 1 || provider == "" || !core.ValidOAuthProvider(provider) {

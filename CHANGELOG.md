@@ -1,5 +1,25 @@
 # Changelog / 更新记录
 
+## v0.2.1 — 2026-11-17
+
+- 新增每个站点账号的“近 24 小时请求状态”：在账号条目最下方以跨满列表宽度的 48 个时间块展示最近 24 小时，每块 30 分钟；手机端固定在该账号卡片底部。
+- 状态数据来自账号自己的站点日志：`/api/log/self` 的消费记录（`type=2`）和错误记录（`type=5`）。绿色表示有消费且未读到错误，混合记录按记录成功率渐变，只有错误为红色，无请求记录为灰色；接口不支持、读取失败或超过每种日志 2000 条上限时显示未知／不完整斜纹，不伪造成功率。
+- 支持鼠标悬浮、触屏点击与键盘方向键查看每个时间段的时间、消费数、错误数及记录成功率；账号列表刷新时保留当前键盘焦点。
+- 账号页可见时每 5 分钟检查并后台更新缓存，工具栏提供“刷新请求状态”；页面轮询和用量统计切换只读缓存，不重复请求站点。失败的刷新保留上次结果并标记过期，重绑和删除会使该账号缓存失效。
+- 日志读取不发起模型探测、不消耗模型调用额度；只保存时间范围和计数，不保存原始日志、错误正文、令牌名称或 IP。错误日志可能包含重试或漏记，因此**记录成功率不是站点可用率**。
+- 后台采集按账号隔离并在分页之间释放共享凭证锁；优先处理从未检查或最久未检查的账号。插件停止或重配时取消采集，避免延迟回调。
+- 新增真实 CPA 集成测试，覆盖健康接口的管理鉴权、缓存读取不访问站点、后台刷新和敏感信息不进入响应；全部平台继续要求无集成测试跳过。
+
+English:
+
+- Add a per-account last-24-hours request status bar below each account, spanning the full list width. It has 48 half-hour blocks on desktop and stays at the bottom of the account card on mobile.
+- Aggregate the account's own site logs (`/api/log/self` type 2 consumption and type 5 errors). Show green for consumption without recorded errors, a ratio gradient for mixed records, red for errors only, and gray for no records. Unsupported, failed, or capped reads display unknown/incomplete stripes instead of a fabricated success rate.
+- Support hover, touch, and keyboard access to each interval's count and success ratio, preserving keyboard focus across account-list refreshes.
+- Check the cache every five minutes while the accounts page is visible and provide a manual refresh action. Polling and usage-range changes only read cached counts; failures retain the prior window marked stale, and rebinds/deletions invalidate the account cache.
+- Do not send model probes or consume model quota. Persist only window and counts, never raw logs, error bodies, token names, or IP addresses. Error logs may contain retries or omit failures, so the record ratio is not uptime.
+- Isolate account failures, release the shared credential lock between pages, prioritize never/least recently checked accounts, and cancel collection on plugin shutdown or reconfiguration.
+- Add real-CPA integration coverage for health-route authentication, cache-only reads, background refresh, and response sanitization; all platforms must still run every integration test without skips.
+
 ## v0.2.0 — 2026-11-17
 
 - 新增跨账号模型用量统计：24 小时 / 7 天 / 30 天区间，账户与模型 token 占比、堆叠时间图、排行、缓存率、请求数、消耗成本及平均 RPM/TPM。数据来自 `/api/log/self`，按站点 `quota_per_unit` 分别折算成本；按区间缓存聚合结果，单账号失败不影响其他账号。

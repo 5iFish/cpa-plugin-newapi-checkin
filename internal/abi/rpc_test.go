@@ -41,7 +41,7 @@ func TestLifecycleConfigDecodeOnce(t *testing.T) {
 }
 func TestManagementPathPrefix(t *testing.T) {
 	r := ManagementRegistration()
-	if len(r.Routes) != 9 || len(r.Resources) != 3 {
+	if len(r.Routes) != 11 || len(r.Resources) != 3 {
 		t.Fatalf("routes: %+v", r)
 	}
 	for _, v := range r.Routes {

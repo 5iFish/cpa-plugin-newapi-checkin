@@ -34,6 +34,7 @@ type Service struct {
 	client *newapi.Client
 	broker *credential.Broker
 	gate   *core.Gate
+	health healthRefresh
 	// Location supplies the schedule timezone for login-mode day keys; nil
 	// falls back to the host local timezone.
 	Location func() *time.Location
@@ -442,6 +443,7 @@ func (s *Service) Bind(ctx context.Context, in BindInput) (out core.AccountSumma
 				record.CreatedAt = v.Accounts[id].CreatedAt
 			}
 			v.Accounts[id] = record
+			delete(v.Health, id)
 			// Cached statistics capture the account label at aggregation time;
 			// a rename must not leave the charts showing the previous name.
 			for key, summary := range v.Stats {
@@ -883,6 +885,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		}
 		if e := s.state.Update(func(v *state.Snapshot) error {
 			v.DeletePending[id] = true
+			delete(v.Health, id)
 			delete(v.RefreshPending, id)
 			v.CancelWork(id)
 			delete(v.Schedules, id)

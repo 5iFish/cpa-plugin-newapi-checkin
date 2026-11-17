@@ -9,6 +9,85 @@ export const clearSensitiveFields = form => { for (const input of form.querySele
 export const allowedChannels = mode => mode === 'login' ? ['token', 'refresh_cookie', 'oauth'] : ['token', 'password', 'refresh_cookie'];
 const failure = kind => Object.assign(new Error(kind),{kind});
 
+export function createHealthController(options={}) {
+  const later=options.setTimeout??globalThis.setTimeout,clear=options.clearTimeout??globalThis.clearTimeout,now=options.now??Date.now;
+  const interval=300000;
+  let authenticated=false,visible=options.visible??true,stopped=false,ids='',epoch=0,last=null,timer=null,pending=null,controller=null;
+  const active=()=>authenticated&&visible&&!stopped&&!!ids;
+  function clearTimer(){if(timer!==null)clear(timer);timer=null}
+  function invalidate(){epoch++;last=null;clearTimer();controller?.abort()}
+  function schedule(){clearTimer();if(!active()||pending)return;const age=last===null?interval:now()-last;timer=later(()=>{timer=null;void refresh(false)},Math.max(0,interval-age))}
+  function auto(){if(!active()){clearTimer();return}if(pending)return;if(last===null||now()-last>=interval||now()<last)void refresh(false);else schedule()}
+  function refresh(force=false){
+    if(!active())return Promise.resolve();if(pending)return pending;
+    if(!force&&last!==null&&now()>=last&&now()-last<interval){schedule();return Promise.resolve()}
+    clearTimer();const generation=epoch,c=new AbortController();controller=c;last=now();
+    pending=Promise.resolve().then(()=>options.request('/health',{method:'POST',body:{refresh:!!force},signal:c.signal})).then(r=>{
+      if(generation!==epoch||!active())return;if(!r?.health)throw failure('invalid_response');options.onData?.(r.health);
+    }).catch(e=>{if(generation!==epoch||e.name==='AbortError'||e.kind==='request_stopped')return;if(e.kind==='management_auth_required'){authenticated=false;invalidate()}else options.onError?.(e)}).finally(()=>{pending=null;controller=null;if(last===null)auto();else schedule()});
+    return pending;
+  }
+  return {refresh,setAuthenticated(value){authenticated=!!value;if(!authenticated)invalidate();else auto()},setVisible(value){const next=!!value;if(next===visible)return;visible=next;if(!visible)invalidate();else auto()},setAccounts(accounts){const next=[...new Set(accounts??[])].sort().join(',');if(next!==ids){ids=next;invalidate()}auto()},stop(){stopped=true;invalidate()}};
+}
+
+const healthCount=n=>Number.isSafeInteger(n)&&n>=0;
+const healthColor=rate=>{const stops=[[239,68,68],[250,204,21],[34,197,94]],segment=rate<0.5?0:1,t=segment===0?rate*2:(rate-0.5)*2;return 'rgb('+stops[segment].map((v,i)=>Math.round(v+(stops[segment+1][i]-v)*t)).join(', ')+')'};
+
+// A colspan row keeps the timeline below the account without squeezing it into
+// the identity column. All account and log labels are rendered as plain text.
+export function replaceAccountRows(doc,body,rows){
+  const active=doc.activeElement?.closest?.('.health-block');
+  const focus=active&&body.contains(active)?{id:active.dataset.accountId,index:active.dataset.index}:null;
+  body.replaceChildren(...rows);
+  if(focus){const target=body.querySelectorAll('.health-block');for(const block of target)if(block.dataset.accountId===focus.id&&block.dataset.index===focus.index){block.focus();break}}
+}
+
+export function renderHealthRow(doc,account,health){
+  const node=(tag,text,cls)=>{const el=doc.createElement(tag);if(text!==undefined)renderText(el,text);if(cls)el.className=cls;return el};
+  const h=health??{},windowValid=Number.isSafeInteger(h.start)&&h.start>0&&h.end-h.start===86400;
+  const countsValid=windowValid&&Array.isArray(h.buckets)&&h.buckets.length===48&&healthCount(h.success)&&healthCount(h.failed)&&h.buckets.every((b,i)=>b&&b.start===h.start+i*1800&&healthCount(b.success)&&healthCount(b.failed))&&h.buckets.reduce((n,b)=>n+b.success,0)===h.success&&h.buckets.reduce((n,b)=>n+b.failed,0)===h.failed;
+  const known=countsValid&&h.complete===true&&(!h.error||h.stale),total=known?h.success+h.failed:0,rate=total?((h.success/total)*100).toFixed(1)+'%':null;
+  const start=windowValid?h.start:Math.floor(Date.now()/1000)-86400,end=start+86400;
+  const row=node('tr',undefined,'account-health-row');row.dataset.accountId=account.account_id;
+  const cell=node('td',undefined,'health-cell');cell.colSpan=7;cell.setAttribute('aria-label',`${account.label||account.username||'账号'} · 近 24 小时请求状态`);row.append(cell);
+  const wrap=node('div',undefined,'account-health'+(h.stale?' is-stale':'')),head=node('div',undefined,'health-head');cell.append(wrap);wrap.append(head);
+  head.append(node('span','近 24 小时请求状态','health-title'));
+  let summary=known?(rate?`记录成功率 ${rate}`:'暂无请求记录'):(health?'数据不可确认':'等待刷新');
+  if(h.stale&&known)summary=`上次 ${summary} · 已过期`;
+  head.append(node('span',summary,'health-summary'));
+  const meta=health?(h.error?message(h.error)+' · ':'')+(h.synced_at&&!String(h.synced_at).startsWith('0001-')?'更新于 '+when(h.synced_at):'尚未读取到有效日志'):'连接后自动读取站点日志';
+  head.append(node('span',meta,'health-meta'));
+  const track=node('div',undefined,'health-track');track.setAttribute('role','group');track.setAttribute('aria-label','24 小时请求记录，使用左右方向键查看');wrap.append(track);
+  const tip=node('div',undefined,'health-tooltip');tip.id='health-tip-'+String(account.account_id??'account').replace(/[^a-zA-Z0-9_-]/g,'_');tip.setAttribute('role','tooltip');tip.hidden=true;wrap.append(tip);
+  const blocks=[];let selected=-1;
+  const range=(from,to)=>`${new Date(from*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})} – ${new Date(to*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})}`;
+  function hide(){tip.hidden=true;selected=-1}
+  function show(i){
+    selected=i;const b=countsValid?h.buckets[i]:{success:0,failed:0},n=b.success+b.failed;
+    const text=known?(n?`消费 ${b.success} · 错误 ${b.failed} · 记录成功率 ${(b.success/n*100).toFixed(1)}%`:'暂无请求记录'):(countsValid?`数据不完整 · 已读取消费 ${b.success} · 错误 ${b.failed}`:'暂无可确认的数据');
+    renderText(tip,`${range(start+i*1800,start+(i+1)*1800)}\n${text}${h.stale?'\n上次结果已过期':''}`);tip.hidden=false;
+    const rect=blocks[i].getBoundingClientRect(),size=tip.getBoundingClientRect(),view=doc.defaultView;
+    const width=view?.innerWidth??1024,height=view?.innerHeight??768;
+    tip.style.left=Math.max(8,Math.min(rect.left,width-size.width-8))+'px';
+    tip.style.top=Math.max(8,Math.min(rect.top>size.height+12?rect.top-size.height-8:rect.bottom+8,height-size.height-8))+'px';
+  }
+  for(let i=0;i<48;i++){
+    const b=countsValid?h.buckets[i]:{success:0,failed:0},n=b.success+b.failed;
+    const state=!known?'unknown':!n?'idle':!b.failed?'success':!b.success?'failure':'mixed';
+    const block=node('button',undefined,'health-block');block.type='button';block.tabIndex=i===0?0:-1;block.dataset.state=state;block.dataset.start=String(start+i*1800);block.dataset.accountId=account.account_id;block.dataset.index=String(i);
+    block.setAttribute('aria-label',`${range(start+i*1800,start+(i+1)*1800)} · ${known?(n?`消费 ${b.success} · 错误 ${b.failed}`:'暂无请求记录'):'数据不可确认'}`);block.setAttribute('aria-describedby',tip.id);
+    if(known&&n)block.style.backgroundColor=healthColor(b.success/n);
+    block.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse')show(i)});block.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')hide()});
+    block.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'){e.preventDefault();if(selected===i&&!tip.hidden)hide();else show(i)}});
+    block.addEventListener('focus',()=>{blocks.forEach((x,j)=>{x.tabIndex=j===i?0:-1});show(i)});block.addEventListener('blur',hide);
+    block.addEventListener('keydown',e=>{let target;if(e.key==='ArrowRight')target=Math.min(47,i+1);else if(e.key==='ArrowLeft')target=Math.max(0,i-1);else if(e.key==='Home')target=0;else if(e.key==='End')target=47;else if(e.key==='Escape'){hide();return}if(target!==undefined){e.preventDefault();blocks[target].focus()}});
+    blocks.push(block);track.append(block);
+  }
+  const endpoint=ts=>new Date(ts*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+  const foot=node('div',undefined,'health-foot');foot.append(node('span',endpoint(start),'health-time'),node('span','基于站点日志 · 错误可能包含重试或漏记','health-source'),node('span',endpoint(end),'health-time'));wrap.append(foot);
+  return row;
+}
+
 export function createApiController(options={}) {
   const fetcher=options.fetch ?? globalThis.fetch.bind(globalThis);
   const storage=options.storage;
@@ -22,8 +101,9 @@ export function createApiController(options={}) {
   function request(path,{method='GET',body,poll=false,signal}={}) {
     const generation=epoch;
     const task=async()=>{
-      if(stopped||!key||generation!==epoch||(poll&&!visible))throw failure('request_stopped');
+      if(stopped||!key||generation!==epoch||signal?.aborted||(poll&&!visible))throw failure('request_stopped');
       if(!/^\/(?:[a-z]+(?:\?(?:id=[a-f0-9]+|provider=(?:github|linuxdo)))?|stats\?range=(?:24h|7d|30d)(?:&refresh=1)?)$/.test(path))throw failure('invalid_input');
+      if(path.startsWith('/health')&&(path!=='/health'||!['GET','POST'].includes(method)||(method==='GET'&&body!==undefined)||(method==='POST'&&(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>k!=='refresh')||(body.refresh!==undefined&&typeof body.refresh!=='boolean')))))throw failure('invalid_input');
       const c=new AbortController();controllers.add(c);if(poll)pollController=c;
       const abort=()=>c.abort();signal?.addEventListener('abort',abort,{once:true});
       try {
@@ -41,7 +121,7 @@ export function createApiController(options={}) {
   function poll(){
     if(stopped||!key||!visible)return Promise.resolve();if(polling)return polling;clearTimer();
     polling=request('/status',{poll:true}).then(data=>{
-      activeJobs=Object.values(data.jobs??{}).some(j=>j.status==='queued'||j.status==='running');options.onStatus?.(data);
+      activeJobs=data.health?.refreshing===true||Object.values(data.jobs??{}).some(j=>j.status==='queued'||j.status==='running');options.onStatus?.(data);
     }).catch(e=>{if(e.name!=='AbortError'&&e.kind!=='request_stopped'&&e.kind!=='management_auth_required')options.onError?.(e)}).finally(()=>{polling=null;schedule()});
     return polling;
   }
@@ -61,7 +141,7 @@ export function createApiController(options={}) {
   };
 }
 
-const labels={user_id_required:'站点要求与令牌匹配的用户 ID：请在站点个人设置查看该账号的数字 ID 后填入绑定表单（填错或留空都会被拒绝）',ready:'可自动签到',success:'签到成功',already:'已签到',network_error:'连接失败，可重试',rate_limited:'站点限流，等待重试',upstream_error:'站点暂时不可用',result_unknown:'正在确认签到结果',credential_expired:'凭证已到期，需要重新绑定',legacy_retired:'旧令牌已退役，请使用 PAT',permission_denied:'权限不足，请检查 profile:read、wallet:read、wallet:write',refresh_outcome_unknown:'刷新结果不确定，请用新会话重新绑定',persistence_error:'新凭证保存失败，已暂停账号',credential_unreadable:'凭证文件无法读取',external_change:'凭证被外部修改，请重新检查',turnstile_blocked:'签到需要人机验证，无法自动执行',not_enabled:'站点未开启签到',origin_forbidden:'站点拒绝刷新来源，请检查反向代理',unsupported_site:'站点接口不符合要求',unknown_error:'操作未完成，请重新检查',login_verification_required:'登录需要二次验证，请使用 PAT 或专用会话',invalid_input:'输入无效，请检查填写内容',identity_mismatch:'新凭证属于其他账号，未覆盖原账号',session_already_managed:'此会话已被管理或结果不确定，请使用全新的专用会话',storage_error:'状态文件不可用，自动任务已停止',engine_error:'排程未能生效，自动任务已停止',disabled:'账号已禁用',deleted:'已删除',delete_pending:'正在删除凭证，自动任务已暂停',delete_failed:'凭证删除失败，自动任务已暂停，可重试删除',canceled:'已取消',no_runnable_accounts:'没有可运行的账号，请先修复账号状态',management_auth_required:'管理密钥无效。已停止请求，请重新输入',request_stopped:'请求已停止',invalid_response:'管理服务返回了无法识别的数据',body_too_large:'输入内容超过大小限制',retry_exhausted:'本轮重试已结束，可手动重试',pending_login:'今日待登录领奖',reward_unknown:'今日已登录，奖励金额未知',cookie_expired:'登录会话失效，请重新导入 Cookie',challenge_blocked:'第三方登录域名对服务器 IP 弹出人机验证（如 Cloudflare），服务器无法自动通过：请点「直接登录」在浏览器完成当天登录（需要你的网络能访问 LinuxDO），或为服务器配置出口代理／换用 GitHub 渠道',needs_attention:'登录被站点拦截或需要确认授权，需人工处理',waf_blocked:'站点对服务器读取用户信息启用了人机验证（如阿里云验证码），暂时读不到余额与奖励状态；浏览器里的登录和奖励发放不受影响，稍后可点「重新检查」重试'};
+const labels={health_timeout:'读取日志超时，稍后重试',health_truncated:'日志超过读取上限，数据不完整',health_invalidated:'账号已变更，请重新刷新',user_id_required:'站点要求与令牌匹配的用户 ID：请在站点个人设置查看该账号的数字 ID 后填入绑定表单（填错或留空都会被拒绝）',ready:'可自动签到',success:'签到成功',already:'已签到',network_error:'连接失败，可重试',rate_limited:'站点限流，等待重试',upstream_error:'站点暂时不可用',result_unknown:'正在确认签到结果',credential_expired:'凭证已到期，需要重新绑定',legacy_retired:'旧令牌已退役，请使用 PAT',permission_denied:'权限不足，请检查 profile:read、wallet:read、wallet:write',refresh_outcome_unknown:'刷新结果不确定，请用新会话重新绑定',persistence_error:'新凭证保存失败，已暂停账号',credential_unreadable:'凭证文件无法读取',external_change:'凭证被外部修改，请重新检查',turnstile_blocked:'签到需要人机验证，无法自动执行',not_enabled:'站点未开启签到',origin_forbidden:'站点拒绝刷新来源，请检查反向代理',unsupported_site:'站点接口不符合要求',unknown_error:'操作未完成，请重新检查',login_verification_required:'登录需要二次验证，请使用 PAT 或专用会话',invalid_input:'输入无效，请检查填写内容',identity_mismatch:'新凭证属于其他账号，未覆盖原账号',session_already_managed:'此会话已被管理或结果不确定，请使用全新的专用会话',storage_error:'状态文件不可用，自动任务已停止',engine_error:'排程未能生效，自动任务已停止',disabled:'账号已禁用',deleted:'已删除',delete_pending:'正在删除凭证，自动任务已暂停',delete_failed:'凭证删除失败，自动任务已暂停，可重试删除',canceled:'已取消',no_runnable_accounts:'没有可运行的账号，请先修复账号状态',management_auth_required:'管理密钥无效。已停止请求，请重新输入',request_stopped:'请求已停止',invalid_response:'管理服务返回了无法识别的数据',body_too_large:'输入内容超过大小限制',retry_exhausted:'本轮重试已结束，可手动重试',pending_login:'今日待登录领奖',reward_unknown:'今日已登录，奖励金额未知',cookie_expired:'登录会话失效，请重新导入 Cookie',challenge_blocked:'第三方登录域名对服务器 IP 弹出人机验证（如 Cloudflare），服务器无法自动通过：请点「直接登录」在浏览器完成当天登录（需要你的网络能访问 LinuxDO），或为服务器配置出口代理／换用 GitHub 渠道',needs_attention:'登录被站点拦截或需要确认授权，需人工处理',waf_blocked:'站点对服务器读取用户信息启用了人机验证（如阿里云验证码），暂时读不到余额与奖励状态；浏览器里的登录和奖励发放不受影响，稍后可点「重新检查」重试'};
 const message=kind=>labels[kind]??'操作未完成，请重新检查';
 const loginResultText={success:'奖励已到账',already:'今日已完成'};
 const resultText=(account,kind)=>account&&account.checkin_mode==='login'&&loginResultText[kind]?loginResultText[kind]:message(kind);
@@ -74,13 +154,15 @@ function mount(){
   let snapshot={accounts:[],jobs:{},history:[],schedules:{}};
   let attemptedConnection=false;
   let balanceSynced=false;
+  let healthPayload={accounts:{},refreshing:false},healthController;
   // Older builds registered a relay Service Worker on this origin; remove it.
   if('serviceWorker' in navigator)navigator.serviceWorker.getRegistrations().then(rs=>{for(const r of rs){for(const w of [r.active,r.waiting,r.installing])if(w&&w.scriptURL.includes('relay-sw.js')){r.unregister();break}}}).catch(()=>{});
   const notify=(text,error=false)=>{renderText($('notice'),text);$('notice').className=error?'notice error':'notice';$('notice').hidden=false;if($('bind-dialog').open){renderText($('bind-notice'),text);$('bind-notice').hidden=false;}};
   const api=createApiController({storage:sessionStorage,onAuth:valid=>{
     $('auth-panel').hidden=valid;renderText($('connection'),valid?'已连接管理服务':'等待管理密钥');$('workspace').inert=!valid;
-    if(valid){attemptedConnection=true;$('notice').hidden=true;}else if(attemptedConnection)notify(message('management_auth_required'),true);
-  },onError:e=>notify(message(e.kind),true),onStatus:data=>{render(data);autoBalance()}});
+    if(valid){attemptedConnection=true;$('notice').hidden=true;}else{healthPayload={accounts:{},refreshing:false};healthController?.setAccounts([]);if(attemptedConnection)notify(message('management_auth_required'),true)}healthController?.setAuthenticated(valid);
+  },onError:e=>notify(message(e.kind),true),onStatus:data=>{if(data.health)healthPayload=data.health;render(data);healthController?.setAccounts((snapshot.accounts??[]).filter(a=>a.status!=='deleted'&&!['delete_pending','delete_failed'].includes(a.status)).map(a=>a.account_id));autoBalance()}});
+  healthController=createHealthController({request:(path,init)=>api.request(path,init),visible:!document.hidden,onData:data=>{healthPayload=data;render({...snapshot,health:data});void api.poll()},onError:e=>notify('请求状态刷新失败：'+message(e.kind),true)});
   async function run(action,button,success){if(button)button.disabled=true;try{await action();if(success)notify(success);await api.poll()}catch(e){notify(message(e.kind),true)}finally{if(button)button.disabled=false}}
   function button(text,fn,className='quiet'){const b=node('button',text,className);b.type='button';b.addEventListener('click',()=>fn(b));return b}
   function openBind(account){$('bind-form').reset();$('bind-notice').hidden=true;$('bind-id').value=account?.account_id??'';$('bind-oauth-provider').dataset.prev=account?.oauth_provider??'';$('bind-site').value=account?.site??'';$('bind-site').readOnly=!!account;$('bind-label').value=account?.label??'';$('bind-user-id').value=account?.upstream_user_id??'';$('bind-expiry').value=account&&account.expires_at>0?new Date(account.expires_at*1000).toLocaleDateString('sv-SE'):'';renderText($('bind-title'),account?'重新绑定账号':'添加账号');$('bind-mode').value=account?.checkin_mode==='login'?'login':'api';bindMode();const stored=account?.channel;channel(stored&&allowedChannels($('bind-mode').value).includes(stored)?stored:'token');if(account?.oauth_provider){$('bind-oauth-provider').value=account.oauth_provider;oauthProvider()}$('bind-token').required=!account;$('bind-token').placeholder=account&&account.token_hint?`留空沿用已保存的令牌（尾号 ${account.token_hint}）`:'nap_…';$('bind-dialog').showModal();$('bind-site').focus()}
@@ -102,10 +184,11 @@ function mount(){
   function autoBalance(){if(balanceSynced)return;const active=(snapshot.accounts??[]).filter(a=>a.status!=='deleted');if(!active.length)return;balanceSynced=true;api.request('/balance',{method:'POST',body:{}}).then(r=>{const updated=new Map((r?.accounts??[]).map(a=>[a.account_id,a]));if(!updated.size)return;snapshot={...snapshot,accounts:(snapshot.accounts??[]).map(a=>updated.get(a.account_id)??a)};render(snapshot)}).catch(()=>{})}
   function render(data){snapshot=data;const accounts=(data.accounts??[]).filter(a=>a.status!=='deleted');const perUnits=new Map((data.accounts??[]).map(a=>[a.account_id,a.balance_per_unit>0?a.balance_per_unit:0]));const usd=(id,v)=>{const pu=perUnits.get(id)||0;return pu>0?('$'+(v/pu).toFixed(2)):quota(v)};const ready=accounts.filter(a=>a.status==='ready').length;
     renderText($('account-count'),`${accounts.length} 个账号`);renderText($('available-count'),`${ready} 个可运行`);const s=data.settings??{};renderText($('schedule-summary'),`每日 ${s.checkin_at??'09:00'} · 随机偏移 ±${s.jitter_minutes??20} 分钟 · ${s.timezone||'宿主本地时区'}`);
-    const running=Object.values(data.jobs??{}).some(j=>['queued','running'].includes(j.status));renderText($('job-status'),running?'任务执行中，每 3 秒更新':'后台自动签到已就绪');
+    const running=Object.values(data.jobs??{}).some(j=>['queued','running'].includes(j.status));renderText($('job-status'),running?'任务执行中，每 3 秒更新':healthPayload.refreshing?'请求状态更新中，每 3 秒读取缓存':'后台自动签到已就绪');
+    $('refresh-health').disabled=healthPayload.refreshing===true;renderText($('refresh-health'),healthPayload.refreshing?'请求状态更新中…':'刷新请求状态');
     if(data.error)notify(message(data.error),true);
-    const body=$('account-rows');body.replaceChildren();$('empty').hidden=accounts.length!==0;$('account-table').hidden=accounts.length===0;
-    for(const a of accounts){const tr=node('tr');const identity=node('td');identity.dataset.label='账号';identity.append(node('strong',a.label||a.username),node('span',a.site,'secondary site'),node('span',a.username,'secondary'));tr.append(identity);
+    const body=$('account-rows'),accountRows=[];$('empty').hidden=accounts.length!==0;$('account-table').hidden=accounts.length===0;
+    for(const a of accounts){const tr=node('tr',undefined,'account-main-row');tr.dataset.accountId=a.account_id;const identity=node('td');identity.dataset.label='账号';identity.append(node('strong',a.label||a.username),node('span',a.site,'secondary site'),node('span',a.username,'secondary'));tr.append(identity);
       const stateCell=node('td');stateCell.dataset.label='状态';stateCell.append(node('span',a.checkin_mode==='login'&&a.status==='ready'?(a.oauth_provider?'登录领奖·自动':'登录领奖·半自动'):message(a.status),'badge '+(a.status==='ready'?'good':'attention')));if(a.last_result)stateCell.append(node('span',resultText(a,a.last_result.status),'secondary'));if(a.checkin_mode==='login'&&a.reward_state&&a.reward_state!==a.last_result?.status)stateCell.append(node('span',resultText(a,a.reward_state),'secondary'));tr.append(stateCell);
       const cred=node('td');cred.dataset.label='凭证';cred.append(node('span',a.kind==='pat'?'PAT':a.kind==='session'?'登录会话':'旧版令牌'));if(a.checkin_mode==='login')cred.append(node('span','登录领奖','secondary'));let expiry=a.expires_at===0&&a.kind!=='session'?'用户标注不设到期':a.expires_at?when(a.expires_at):'到期时间未知';cred.append(node('span',expiry,'secondary'));if(a.expires_at>0&&a.expires_at*1000-Date.now()<86400000)cred.append(node('span','即将或已经到期，请重新绑定','expiry'));if(a.token_hint)cred.append(node('span',a.token_hint,'secondary'));tr.append(cred);
       const bal=node('td');bal.dataset.label='钱包余额';bal.append(node('span',a.balance_quota==null?'—':usd(a.account_id,a.balance_quota),'strong'));tr.append(bal);
@@ -116,8 +199,9 @@ function mount(){
       const planned=node('td');planned.dataset.label='下次运行';const schedule=data.schedules?.[a.account_id];planned.append(node('span',schedule?.work_id?'本日任务已入队':schedule?when(schedule.planned_at):a.status==='ready'?'等待排程':'已暂停'));tr.append(planned);
       const actions=node('td');actions.dataset.label='操作';const group=node('div',undefined,'row-actions');
       if(a.checkin_mode==='login'&&a.oauth_provider!=='github')group.append(button('直接登录',()=>{window.open(new URL('/login',a.site).href,'_blank','noopener')}));
-      const login=a.checkin_mode==='login';const check=button(login?'检测到账':'签到',b=>run(()=>api.request(login?'/recheck':'/checkin',{method:'POST',body:{account_id:a.account_id}}),b,login?'已重新检测到账':'任务已加入队列'));check.disabled=a.status!=='ready';group.append(check,button('重新检查',b=>run(()=>api.request('/recheck',{method:'POST',body:{account_id:a.account_id}}),b,'已重新检查')),button('重绑',()=>openBind(a)),button(['delete_pending','delete_failed'].includes(a.status)?'重试删除':'删除',()=>{$('delete-id').value=a.account_id;renderText($('delete-name'),a.label||a.username);$('delete-dialog').showModal()},'quiet danger'));actions.append(group);tr.append(actions);body.append(tr);
+      const login=a.checkin_mode==='login';const check=button(login?'检测到账':'签到',b=>run(()=>api.request(login?'/recheck':'/checkin',{method:'POST',body:{account_id:a.account_id}}),b,login?'已重新检测到账':'任务已加入队列'));check.disabled=a.status!=='ready';group.append(check,button('重新检查',b=>run(()=>api.request('/recheck',{method:'POST',body:{account_id:a.account_id}}),b,'已重新检查')),button('重绑',()=>openBind(a)),button(['delete_pending','delete_failed'].includes(a.status)?'重试删除':'删除',()=>{$('delete-id').value=a.account_id;renderText($('delete-name'),a.label||a.username);$('delete-dialog').showModal()},'quiet danger'));actions.append(group);tr.append(actions);accountRows.push(tr,renderHealthRow(document,a,healthPayload.accounts?.[a.account_id]));
     }
+    replaceAccountRows(document,body,accountRows);
     const history=$('history-rows');history.replaceChildren();const names=new Map((data.accounts??[]).map(a=>[a.account_id,a.label||a.username]));const modes=new Map((data.accounts??[]).map(a=>[a.account_id,a.checkin_mode]));const entries=[...(data.history??[])].reverse();$('history-empty').hidden=entries.length>0;
     for(const entry of entries){const row=node('tr');const login=modes.get(entry.account_id)==='login';const awarded=login&&entry.result.status==='success'?'推断 '+usd(entry.account_id,entry.result.quota_awarded):usd(entry.account_id,entry.result.quota_awarded);for(const text of [when(entry.result.observed_at),names.get(entry.account_id)??'已移除账号',resultText({checkin_mode:modes.get(entry.account_id)},entry.result.status),entry.result.server_date||'站点日期未知',awarded])row.append(node('td',text));history.append(row)}
     // Statistics payloads carry the account label captured at aggregation
@@ -183,6 +267,7 @@ function mount(){
   $('auth-form').addEventListener('submit',e=>{e.preventDefault();const key=$('management-key').value;$('management-key').value='';void api.setKey(key)});
   $('change-key').addEventListener('click',()=>api.logout());$('add-account').addEventListener('click',()=>openBind());$('empty-add').addEventListener('click',()=>openBind());
   $('check-all').addEventListener('click',e=>void run(()=>api.request('/checkin',{method:'POST',body:{}}),e.currentTarget,'可运行账号已加入队列'));
+  $('refresh-health').addEventListener('click',()=>void healthController.refresh(true));
   $('refresh-balances').addEventListener('click',e=>void run(async()=>{const r=await api.request('/balance',{method:'POST',body:{}});const failed=Object.values(r?.failed??{});if(failed.length)notify(`${r.accounts.length} 个账号余额已刷新，${failed.length} 个失败`,true)},e.currentTarget,'余额已刷新'));
   for(const b of document.querySelectorAll('[data-channel]'))b.addEventListener('click',()=>channel(b.dataset.channel));
   $('bind-mode').addEventListener('change',bindMode);$('bind-oauth-provider').addEventListener('change',oauthProvider);
@@ -195,7 +280,8 @@ function mount(){
   $('delete-confirm').addEventListener('click',e=>void run(async()=>{await api.request('/accounts?id='+encodeURIComponent($('delete-id').value),{method:'DELETE'});$('delete-dialog').close()},e.currentTarget,'凭证已删除，执行历史保留'));
   $('settings-form').addEventListener('submit',e=>{e.preventDefault();void run(()=>api.request('/settings',{method:'POST',body:{checkin_at:$('setting-time').value,jitter_minutes:Number($('setting-jitter').value),timezone:$('setting-zone').value.trim()}}),$('settings-save'),'排程设置已生效')});
   $('settings-reset').addEventListener('click',e=>void run(()=>api.request('/settings',{method:'POST',body:{checkin_at:null,jitter_minutes:null,timezone:null}}),e.currentTarget,'已恢复宿主配置默认值'));
-  for(const tab of document.querySelectorAll('[data-view]'))tab.addEventListener('click',()=>{for(const t of document.querySelectorAll('[data-view]'))t.setAttribute('aria-selected',String(t===tab));for(const panel of document.querySelectorAll('[data-view-panel]'))panel.hidden=panel.dataset.viewPanel!==tab.dataset.view});
-  document.addEventListener('visibilitychange',()=>void api.setVisible(!document.hidden));window.addEventListener('pagehide',()=>api.stop());void api.start();
+  const healthVisible=()=>!document.hidden&&!document.querySelector('[data-view-panel="accounts"]').hidden;
+  for(const tab of document.querySelectorAll('[data-view]'))tab.addEventListener('click',()=>{for(const t of document.querySelectorAll('[data-view]'))t.setAttribute('aria-selected',String(t===tab));for(const panel of document.querySelectorAll('[data-view-panel]'))panel.hidden=panel.dataset.viewPanel!==tab.dataset.view;healthController.setVisible(healthVisible())});
+  document.addEventListener('visibilitychange',()=>{healthController.setVisible(healthVisible());void api.setVisible(!document.hidden)});window.addEventListener('pagehide',()=>{healthController.stop();api.stop()});void api.start();
 }
 if(typeof document!=='undefined'&&document.getElementById('workspace'))mount();
