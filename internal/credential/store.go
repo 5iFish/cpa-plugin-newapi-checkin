@@ -2,12 +2,12 @@ package credential
 
 import (
 	"context"
-	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/abi"
-	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/abi"
+	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"os"
 	"path/filepath"
@@ -89,10 +89,22 @@ func decode(raw []byte, id string) (core.Account, error) {
 	}
 	c := a.Credential
 	if c.Kind == "session" {
-		if c.AccessToken == "" || c.RefreshToken == "" || c.SessionID == "" || c.AccessExpiresAt <= 0 || c.SessionExpiresAt <= 0 {
+		// A refresh token is optional only for sessions bootstrapped from an
+		// OAuth callback on sites without a PAT entry point; those renew via
+		// the daily login chain instead of the refresh endpoint.
+		if c.AccessToken == "" || c.SessionID == "" || c.AccessExpiresAt <= 0 || c.SessionExpiresAt <= 0 {
+			return a, core.Error("credential_unreadable")
+		}
+		if c.RefreshToken == "" && c.OAuthCookie == "" {
 			return a, core.Error("credential_unreadable")
 		}
 	} else if (c.Kind != "pat" && c.Kind != "legacy") || c.Token == "" {
+		return a, core.Error("credential_unreadable")
+	}
+	if (c.OAuthProvider == "") != (c.OAuthCookie == "") || !core.ValidOAuthProvider(c.OAuthProvider) {
+		return a, core.Error("credential_unreadable")
+	}
+	if c.OAuthCookie != "" && (len(c.OAuthCookie) > 4096 || strings.ContainsAny(c.OAuthCookie, "\r\n") || !strings.Contains(c.OAuthCookie, "=")) {
 		return a, core.Error("credential_unreadable")
 	}
 	return a, nil
@@ -184,6 +196,11 @@ func (s *Store) Missing(ctx context.Context, id string) (bool, error) {
 	}
 	return false, nil
 }
+
+// knownCredentialFields are always replaced by the current credential, never
+// preserved from the previous file.
+var knownCredentialFields = []string{"kind", "channel", "token", "access_token", "refresh_token", "access_expires_at", "session_id", "session_expires_at", "expires_at_hint", "oauth_provider", "oauth_cookie", "generation"}
+
 func encode(a core.Account, old []byte) ([]byte, error) {
 	m := map[string]json.RawMessage{}
 	if len(old) > 0 && json.Unmarshal(old, &m) != nil {
@@ -192,10 +209,11 @@ func encode(a core.Account, old []byte) ([]byte, error) {
 	known, _ := json.Marshal(a)
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(known, &fields)
-	// Preserve unknown fields at both the document and credential levels.
+	// Preserve unknown fields at the credential level while replacing every
+	// known credential field with its current value.
 	prior := map[string]json.RawMessage{}
 	_ = json.Unmarshal(m["credential"], &prior)
-	for _, k := range []string{"kind", "channel", "token", "access_token", "refresh_token", "access_expires_at", "session_id", "session_expires_at", "expires_at_hint", "generation"} {
+	for _, k := range knownCredentialFields {
 		delete(prior, k)
 	}
 	var cred map[string]json.RawMessage
@@ -203,8 +221,17 @@ func encode(a core.Account, old []byte) ([]byte, error) {
 	for k, v := range cred {
 		prior[k] = v
 	}
-	fields["credential"], _ = json.Marshal(prior)
+	// Known top-level fields are replaced rather than merged. An optional field
+	// omitted by omitempty (for example checkin_mode after switching to api)
+	// must disappear instead of surviving from the previous file.
+	for _, k := range []string{"account_id", "site", "upstream_user_id", "username", "label", "checkin_mode", "disabled", "credential"} {
+		delete(m, k)
+	}
+	m["credential"], _ = json.Marshal(prior)
 	for k, v := range fields {
+		if k == "credential" {
+			continue
+		}
 		m[k] = v
 	}
 	if !a.Disabled {

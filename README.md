@@ -8,16 +8,16 @@
 
 ## 下载
 
-**v0.1.2** 提供以下六个原生安装包，全部通过原生构建与真实 CPA 集成验证（每个平台 9 项集成测试）。可从页面顶部“下载正式版”获取。`amd64` 即 `x86_64 / x64`，`arm64` 即 `aarch64`，不包含 32 位 ARM。
+**v0.2.0** 的发布包按以下六个平台分别构建；发布工作流在每个平台执行原生构建和真实 CPA 集成测试，全部通过后才汇总安装包与校验值。可从页面顶部“下载正式版”获取；验证记录见[兼容性说明](docs/compatibility.md)。`amd64` 即 `x86_64 / x64`，`arm64` 即 `aarch64`，不包含 32 位 ARM。
 
 | 平台 | Release 下载文件 | ZIP 内的插件文件 |
 | --- | --- | --- |
-| Windows x64 | `newapi-checkin_0.1.2_windows_amd64.zip` | `newapi-checkin.dll` |
-| Windows ARM64 | `newapi-checkin_0.1.2_windows_arm64.zip` | `newapi-checkin.dll` |
-| Linux x86_64 | `newapi-checkin_0.1.2_linux_amd64.zip` | `newapi-checkin.so` |
-| Linux ARM64 | `newapi-checkin_0.1.2_linux_arm64.zip` | `newapi-checkin.so` |
-| macOS Intel | `newapi-checkin_0.1.2_darwin_amd64.zip` | `newapi-checkin.dylib` |
-| macOS Apple Silicon（M 系列） | `newapi-checkin_0.1.2_darwin_arm64.zip` | `newapi-checkin.dylib` |
+| Windows x64 | `newapi-checkin_0.2.0_windows_amd64.zip` | `newapi-checkin.dll` |
+| Windows ARM64 | `newapi-checkin_0.2.0_windows_arm64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.2.0_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.2.0_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.2.0_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon（M 系列） | `newapi-checkin_0.2.0_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
 每个正式版本附带 `checksums.txt`，请从同一个 Release 下载安装包与校验文件。Linux 可运行 `sha256sum -c checksums.txt --ignore-missing`；macOS 可运行 `shasum -a 256 <安装包>`，Windows 可运行 `Get-FileHash -Algorithm SHA256 <安装包>`，对照文件内的校验值。
 
@@ -51,13 +51,20 @@ plugins:
 
 页面静态资源可以公开访问，账号和任务数据必须通过受 CPA 鉴权保护的 `/v0/management/plugins/newapi-checkin/…` API 获取。请为远程管理部署 HTTPS。
 
+控制台的“刷新余额”只刷新各账号的钱包余额；模型用量统一在账户列表上方的“用量统计”区块查看：按 24 小时 / 7 天 / 30 天聚合已绑定账号的站点消费日志，左图为账户或模型维度的 token 占比与排行，右图为模型按时间分桶的堆叠用量与排行，含缓存率、请求数、折算消耗与平均 RPM/TPM。统计结果按区间缓存在状态文件中，点“刷新统计”或切换区间时才实时拉取；数据来自站点自己的消费日志 `/api/log/self`，只含聚合，不含请求明细，某账号日志读取失败只影响该账号的统计。
+
 ## 选择绑定方式
 
-| 方式 | 条件与限制 |
-|---|---|
-| PAT / 访问令牌 | 首选。需 `profile:read`、`wallet:read`、`wallet:write` 三项权限。站点创建 PAT 默认 30 天；不设到期需在站点显式选择 **Never expires**。插件中的到期日期只作提醒，留空表示未知。旧版 legacy 令牌可能受站点退役时间限制。 |
-| 站点账号密码 | 仅用于站点本地密码；不收集 LinuxDO 密码。不保存密码，创建独立登录会话；使用站点提供的 v2 密码加密协议。2FA/passkey 等交互验证只提示，不代办。 |
-| 专用 refresh cookie | 高级导入。需新建专用登录会话并明确确认，之后不要在浏览器/其他工具继续使用该会话。已管理或刷新结果不确定的会话不能重复导入。 |
+绑定分两个独立选项：**签到模式**决定奖励怎么发（标准接口签到 / 登录即签到），**绑定方式**决定插件用什么凭证访问站点。可用渠道随模式变化，控制台只显示当前模式支持的渠道。
+
+| 绑定方式 | 可用模式 | 需要填写 | 条件与限制 |
+|---|---|---|---|
+| PAT / 访问令牌 | 标准签到、登录即签到 | 访问令牌；部分站点另需数字用户 ID；可选到期提醒 | 首选。需 `profile:read`、`wallet:read`、`wallet:write` 三项权限。站点创建 PAT 默认 30 天；不设到期需在站点显式选择 **Never expires**。重新绑定时令牌留空表示沿用已保存的令牌。 |
+| 站点账号密码 | 仅标准签到 | 站点用户名、站点密码 | 仅用于站点本地密码；不收集 LinuxDO 密码。不保存密码，创建独立登录会话；使用站点提供的 v2 密码加密协议。会话最多 30 天。2FA/passkey 等交互验证只提示，不代办。登录即签到模式不支持此渠道（奖励依赖重新登录，密码会话无法无人值守续期）。 |
+| 高级：站点 Cookie | 标准签到、登录即签到 | `new_api_refresh` Cookie 值，并勾选“专用会话”确认 | 需新建专用登录会话，之后不要在浏览器/其他工具继续使用该会话。已管理或刷新结果不确定的会话不能重复导入。适合站点没有 PAT 入口的情况。 |
+| 自动：第三方会话 | 仅登录即签到 | GitHub 或 LinuxDO 的会话 Cookie 请求头 | 插件立即用该 Cookie 完成一次站点登录，从回调直接取得站点会话凭证（适合没有 PAT 入口的站点）。站点会话随每日自动登录续期；重新绑定需重新粘贴 Cookie。 |
+
+登录即签到模式还会在令牌、专用 Cookie 两种渠道下提供一个可选的“每日自动登录”：填 GitHub/LinuxDO 会话 Cookie 后由服务器每天自动完成一次站点登录；选“手动”则每天由你在浏览器登录，插件只负责检测到账。
 
 部分 NewAPI 站点（如 `new.xkool.cfd`）还要求 `New-Api-User` 请求头。使用访问令牌绑定时，请在“站点用户 ID”中填写同一账号的数字 ID；可从已登录网页的 `/api/user/self` 请求头查看。不要求此头的站点可留空。插件会校验该 ID 与令牌实际身份一致，并在复查、自动签到和重新绑定时复用已验证的 ID。管理 API 对应可选字段为 `upstream_user_id`。
 
@@ -69,11 +76,24 @@ plugins:
 
 ## 登录与签到
 
-登录方式与领取奖励的任务是两件事。NewAPI 上游的 `/api/user/login` 建立登录会话；签到奖励由独立的 `POST /api/user/checkin` 发放。插件通过 PAT 或已保存的会话执行签到，不需要每天重新输入密码。
+登录方式与领取奖励的任务是两件事，插件按账号的**签到模式**区分：
 
-以 `https://new.xkool.cfd` 为例：2026-11-09 的公开 `/api/status` 返回 `checkin_enabled=true`、`turnstile_check=false`，FAQ 写明“每天签到 1–5 中转币”。因此应使用现有签到流程。该站点未公开版本，以上公开检查不能证明是否额外定制了登录奖励，也不代表已登录或实际领取奖励。
+- **标准接口签到（默认 `api`）**：NewAPI 上游的 `/api/user/login` 建立登录会话；签到奖励由独立的 `POST /api/user/checkin` 发放。插件通过 PAT 或已保存的会话执行签到，不需要每天重新输入密码。
+- **登录即签到（`login`）**：面向 AgentRouter 这类把每日奖励绑定在“重新登录”事件上的站点。这类站点没有可用的签到接口（实测 `sign_in` 404、`checkin` 拒绝令牌），插件只做两件事：用访问令牌检测到账，以及可选地代替你完成每日登录。
 
-添加时填写站点根地址，使用该站点的个人访问令牌；不要填写模型调用用的 API Key 或 CPA 管理密钥。绑定成功后，可手动签到或等待排程。当前没有账号级“仅登录”模式；单纯保存凭证或刷新令牌不能被记录为签到成功。首次绑定只验证并保存；后续自动任务可能按排程执行，重新绑定现有账号也会安排补查和必要的签到。
+以 `https://new.xkool.cfd` 为例：2026-11-09 的公开 `/api/status` 返回 `checkin_enabled=true`、`turnstile_check=false`，FAQ 写明“每天签到 1–5 中转币”。因此应使用标准签到模式。该站点未公开版本，以上公开检查不能证明是否额外定制了登录奖励，也不代表已登录或实际领取奖励。
+
+### 登录即签到模式的工作方式
+
+登录模式支持“PAT / 访问令牌”“高级：站点 Cookie”“自动：第三方会话”三种绑定，不使用账号密码；同样需要站点用户 ID 时一并填写。绑定成功后按排程每日检测：
+
+- **到账判定**：`GET /api/user/self` 返回的授予总额（`quota + used_quota`，消费不改变该值）上涨，并且最近登录时间在本次执行日（或登录回调带回 `checked_in` 回执）时，才记为“已到账”，奖励金额按额度差推断展示。不返回 `last_login_time`、改为每日首次访问发放固定补贴的站点（如 freegg.app），以 `setting.allowance_date` 等于执行日作为当日到账信号。只有总额上涨但没有今日信号时，会先把它记为新的基线，不会冒称今日奖励；只有登录信号更新而总额未涨则记“金额未知”（可能当日已领取）。不硬编码奖励金额，不伪造服务端日期。
+- **半自动（默认）**：未导入第三方 Cookie 时，账号显示“今日待登录领奖”，控制台提供“打开站点登录”链接；你在任意设备的浏览器完成一次站点登录（通常还需先退出旧会话），插件下次检测即记录到账。“检测到账”只查询证据，不会触发登录。
+- **全自动（可选）**：绑定或重绑时导入 GitHub／LinuxDO 的会话 Cookie 请求头后，插件每日在服务器上用纯 HTTP 请求回放 OAuth 登录链（先向站点的 `/api/oauth/state` 申请一次性 state：新版 NewAPI 用 `POST` 返回 `flow_token`，AgentRouter 一类旧版用 `GET ?mode=login`，两种形态都兼容；再带 Cookie 访问第三方授权端点，回到站点 `/api/oauth/<provider>` 完成登录），全程不调用签到接口、不执行浏览器。每次登录使用独立的站点会话；回调发出前先持久化尝试标记，登录结果不确定时不会重放整条链，只查询到账。登录过程中第三方端点轮换的 Cookie 会自动写回 CPA 凭证文件，下次登录直接使用最新会话。Cookie 失效（第三方要求重新登录）、需要确认授权或被站点风控拦截时，账号暂停并提示重新导入；重新检查只更新到账证据，不会解除未验证的第三方会话暂停。
+
+**导入 Cookie 前必须了解**：第三方会话 Cookie 等同于你 GitHub／LinuxDO 账号的登录控制权。它只保存在 CPA 认证目录的凭证文件中，只发送给对应域名的授权端点，绝不发送给签到站点或其他域名，也不会出现在状态文件、日志、控制台或管理 API 返回中。请像保管密码一样保管 CPA 认证目录，并接受站点服务条款上自动化登录的灰色风险（与同类开源工具一致）。切换回标准模式会清除已保存的 Cookie。
+
+添加时填写站点根地址，使用该站点的个人访问令牌；不要填写模型调用用的 API Key 或 CPA 管理密钥。首次绑定只验证并保存（登录模式同时记录到账基线，不误报当日待登录）；后续自动任务按排程执行，重新绑定现有账号会安排补查和必要的签到。
 
 ## 排程、重试与统计
 
@@ -138,7 +158,7 @@ python scripts/package-release.py --platform linux-amd64
 
 ```sh
 GOWORK=off CGO_ENABLED=1 go test -p=2 ./... -count=1
-node --test tests/ui/console.test.mjs
+node --test tests/ui/*.test.mjs
 python3 -m unittest discover -s tests/packaging -v
 GOWORK=off go vet ./...
 GOWORK=off CGO_ENABLED=1 go test -race -p=2 ./internal/core ./internal/credential ./internal/account ./internal/config ./internal/engine ./internal/app

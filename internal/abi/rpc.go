@@ -23,7 +23,7 @@ type RegisterResult struct {
 func Registration() RegisterResult {
 	return RegisterResult{
 		SchemaVersion: pluginabi.SchemaVersion,
-		Metadata: pluginapi.Metadata{Name: Name, Version: "0.1.2", Author: "5ifish", GitHubRepository: "https://github.com/5ifish/cpa-plugin-newapi-checkin", ConfigFields: []pluginapi.ConfigField{
+		Metadata: pluginapi.Metadata{Name: Name, Version: "0.2.0", Author: "5ifish", GitHubRepository: "https://github.com/5ifish/cpa-plugin-newapi-checkin", ConfigFields: []pluginapi.ConfigField{
 			{Name: "checkin-at", Type: pluginapi.ConfigFieldTypeString, Description: "Daily check-in time (09:00)"},
 			{Name: "jitter-minutes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Daily jitter in minutes (0–120, default 20)"},
 			{Name: "timezone", Type: pluginapi.ConfigFieldTypeString, Description: "IANA time zone; empty means host local"},
@@ -46,8 +46,8 @@ type Routes struct {
 func ManagementRegistration() Routes {
 	return Routes{
 		Routes: []pluginapi.ManagementRoute{
-			{Method: "GET", Path: Prefix + "/status"}, {Method: "POST", Path: Prefix + "/accounts"}, {Method: "DELETE", Path: Prefix + "/accounts"},
-			{Method: "POST", Path: Prefix + "/checkin"}, {Method: "POST", Path: Prefix + "/recheck"}, {Method: "POST", Path: Prefix + "/settings"},
+			{Method: "GET", Path: Prefix + "/status"}, {Method: "GET", Path: Prefix + "/probe"}, {Method: "GET", Path: Prefix + "/stats"}, {Method: "POST", Path: Prefix + "/accounts"}, {Method: "DELETE", Path: Prefix + "/accounts"},
+			{Method: "POST", Path: Prefix + "/checkin"}, {Method: "POST", Path: Prefix + "/recheck"}, {Method: "POST", Path: Prefix + "/balance"}, {Method: "POST", Path: Prefix + "/settings"},
 		}, Resources: []pluginapi.ResourceRoute{{Path: "/console", Menu: "NewAPI 签到", Description: "站点签到与凭证管理"}, {Path: "/console.css"}, {Path: "/console.js"}},
 	}
 }

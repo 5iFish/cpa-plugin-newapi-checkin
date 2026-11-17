@@ -95,7 +95,7 @@ jobs:
         run: |
           go test ./... -count=1 -timeout=180s
           go vet ./...
-          node --test tests/ui/console.test.mjs
+          node --test tests/ui/*.test.mjs
           ${{ matrix.python }} -m unittest discover -s tests/packaging -v
       - name: Build Windows library
         if: runner.os == 'Windows'

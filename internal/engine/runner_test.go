@@ -2,12 +2,12 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/credential"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/newapi"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/testutil"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -32,6 +32,9 @@ func fixture(t *testing.T) *fixtureData {
 		var data any
 		if r.URL.Path == "/api/status" {
 			data = map[string]any{"turnstile_check": false}
+		} else if r.URL.Path == "/api/user/self" {
+			f.gets.Add(1)
+			data = map[string]any{"id": 1, "username": "u", "quota": 4321, "used_quota": 0, "last_login_time": 0}
 		} else if r.Method == "GET" {
 			f.gets.Add(1)
 			if f.statsFail && f.posts.Load() > 0 {
@@ -87,7 +90,7 @@ func TestLostCheckinResponseQueriesBeforeRetry(t *testing.T) {
 		t.Fatal(r, e)
 	}
 	r, e = f.runner.Attempt(context.Background(), f.id)
-	if e != nil || r.Status != "already" || f.posts.Load() != 1 || f.gets.Load() != 2 {
+	if e != nil || r.Status != "already" || f.posts.Load() != 1 || f.gets.Load() != 4 {
 		t.Fatal(r, e, f.posts.Load())
 	}
 }
@@ -96,6 +99,9 @@ func TestStatsUsesServerTotalQuota(t *testing.T) {
 	r, e := f.runner.Attempt(context.Background(), f.id)
 	if e != nil || r.ServerDate != "2026-10-31" || r.QuotaAwarded != 7 {
 		t.Fatal(r, e)
+	}
+	if rec := f.state.Read().Accounts[f.id]; rec.BalanceQuota == nil || *rec.BalanceQuota != 4321 {
+		t.Fatal("daily check-in did not refresh the wallet balance", rec.BalanceQuota)
 	}
 	if a := f.state.Read().Accounts[f.id]; a.TotalQuota != 12345 || a.TotalCheckins != 99 {
 		t.Fatal(a)

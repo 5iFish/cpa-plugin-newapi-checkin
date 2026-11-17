@@ -2,10 +2,10 @@ package credential
 
 import (
 	"context"
+	"errors"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/newapi"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
-	"errors"
 	"time"
 )
 
@@ -31,6 +31,20 @@ func NewBroker(repo *Store, s *state.Store, client *newapi.Client, gate *core.Ga
 
 // Forget is called only inside the shared gate, after an explicit rebind or deletion.
 func (b *Broker) Forget(id string) { delete(b.pending, id) }
+
+// SaveCredential persists a credential-field update from inside a WithAccount
+// action — for example a provider session cookie rotated during an automatic
+// login. It reloads the current revision under the same gate and keeps the
+// generation, so running work items stay valid. Secrets only ever reach the
+// CPA credential file, never state.
+func (b *Broker) SaveCredential(ctx context.Context, id string, mutate func(*core.Account)) error {
+	a, rev, e := b.repo.Load(ctx, id)
+	if e != nil {
+		return e
+	}
+	mutate(&a)
+	return b.repo.Save(ctx, a, rev)
+}
 func (b *Broker) status(id, status string) error {
 	return b.state.Update(func(s *state.Snapshot) error {
 		a, ok := s.Accounts[id]
@@ -136,7 +150,7 @@ func (b *Broker) useLocked(ctx context.Context, id string, action func(core.Acco
 		if a.Credential.SessionExpiresAt <= b.now().Unix() {
 			return core.Error("credential_expired")
 		}
-		if a.Credential.AccessExpiresAt <= b.now().Add(time.Minute).Unix() {
+		if a.Credential.RefreshToken != "" && a.Credential.AccessExpiresAt <= b.now().Add(time.Minute).Unix() {
 			a, rev, e = b.refresh(ctx, a, rev)
 			if e != nil {
 				return e
@@ -158,7 +172,7 @@ func (b *Broker) useLocked(ctx context.Context, id string, action func(core.Acco
 	}
 	e = action(a, bearer(a))
 	var api *core.APIError
-	if !refreshed && a.Credential.Kind == "session" && errors.As(e, &api) && api.HTTPStatus == 401 && api.Code == "AUTH_TOKEN_EXPIRED" {
+	if !refreshed && a.Credential.Kind == "session" && a.Credential.RefreshToken != "" && errors.As(e, &api) && api.HTTPStatus == 401 && api.Code == "AUTH_TOKEN_EXPIRED" {
 		a, rev, e = b.refresh(ctx, a, rev)
 		if e != nil {
 			return e

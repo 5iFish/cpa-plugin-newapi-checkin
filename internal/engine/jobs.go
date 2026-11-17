@@ -2,11 +2,11 @@ package engine
 
 import (
 	"context"
-	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
-	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
+	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
 	randv2 "math/rand/v2"
 	"sort"
 	"sync"
@@ -184,6 +184,19 @@ func (j *Jobs) Step(ctx context.Context) error {
 		case ctx.Err() != nil:
 			w.Status = "retry"
 			w.NextAttemptAt = j.clock.Now().UTC()
+		case core.ErrorKind(err) == "login_deferred":
+			// Waiting for the minimum login interval is not a failed business
+			// attempt; keep the work item scheduled for when it is eligible.
+			if !queryOnly && w.Attempt > 0 {
+				w.Attempt--
+			}
+			var api *core.APIError
+			wait := time.Minute
+			if errors.As(err, &api) && api.RetryAfter > 0 {
+				wait = api.RetryAfter
+			}
+			w.Status = "retry"
+			w.NextAttemptAt = j.clock.Now().Add(wait).UTC()
 		case Retryable(err) && w.Attempt < 3:
 			var api *core.APIError
 			var after time.Duration

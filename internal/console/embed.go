@@ -22,9 +22,9 @@ func Resource(path string) (pluginapi.ManagementResponse, bool) {
 		name = "console.html"
 		kind = "text/html; charset=utf-8"
 	case "console.css":
-		kind = "text/css; charset=utf-8"
+		kind = "text/css"
 	case "console.js":
-		kind = "text/javascript; charset=utf-8"
+		kind = "text/javascript"
 	default:
 		return pluginapi.ManagementResponse{}, false
 	}

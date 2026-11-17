@@ -9,3 +9,4 @@ docs/verification.md
 docs/superpowers/
 __pycache__/
 *.pyc
+.env

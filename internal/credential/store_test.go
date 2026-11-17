@@ -2,9 +2,9 @@ package credential
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/core"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/testutil"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,6 +75,98 @@ func TestPreserveUnknownJSON(t *testing.T) {
 		t.Fatal(string(b))
 	}
 }
+func TestCheckinModeRoundTrip(t *testing.T) {
+	s, _, a := saved(t)
+	_, r, e := s.Load(context.Background(), a.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	a.CheckinMode = core.CheckinModeLogin
+	a.Credential.Generation++
+	if e = s.Save(context.Background(), a, r); e != nil {
+		t.Fatal(e)
+	}
+	got, _, e := s.Load(context.Background(), a.ID)
+	if e != nil || got.CheckinMode != core.CheckinModeLogin {
+		t.Fatal(got.CheckinMode, e)
+	}
+}
+
+func TestOmittedCheckinModeDoesNotSurviveRebind(t *testing.T) {
+	s, h, a := saved(t)
+	_, r, e := s.Load(context.Background(), a.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	a.CheckinMode = core.CheckinModeLogin
+	a.Credential.Generation++
+	if e = s.Save(context.Background(), a, r); e != nil {
+		t.Fatal(e)
+	}
+	_, r, e = s.Load(context.Background(), a.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// A caller that omits the mode must not inherit the previous file's value.
+	a.CheckinMode = ""
+	a.Credential.Generation++
+	if e = s.Save(context.Background(), a, r); e != nil {
+		t.Fatal(e)
+	}
+	raw, e := os.ReadFile(filepath.Join(h.Dir, Filename(a.ID)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var m map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &m)
+	if _, ok := m["checkin_mode"]; ok {
+		t.Fatal("stale checkin_mode survived an omitted rebind", string(raw))
+	}
+	got, _, e := s.Load(context.Background(), a.ID)
+	if e != nil || got.CheckinMode != "" {
+		t.Fatal(got.CheckinMode, e)
+	}
+}
+
+func TestOAuthCookieRoundTrip(t *testing.T) {
+	s, _, a := saved(t)
+	_, r, e := s.Load(context.Background(), a.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	a.Credential.OAuthProvider = core.OAuthProviderGitHub
+	a.Credential.OAuthCookie = "user_sessions=abc; logged_in=1"
+	a.Credential.Generation++
+	if e = s.Save(context.Background(), a, r); e != nil {
+		t.Fatal(e)
+	}
+	got, _, e := s.Load(context.Background(), a.ID)
+	if e != nil || got.Credential.OAuthProvider != core.OAuthProviderGitHub || got.Credential.OAuthCookie != "user_sessions=abc; logged_in=1" {
+		t.Fatal(got.Credential, e)
+	}
+}
+
+func TestOAuthCredentialValidation(t *testing.T) {
+	for name, mutate := range map[string]func(*core.Account){
+		"provider without cookie": func(a *core.Account) { a.Credential.OAuthProvider = core.OAuthProviderGitHub },
+		"cookie without provider": func(a *core.Account) { a.Credential.OAuthCookie = "user_sessions=abc" },
+		"unknown provider":        func(a *core.Account) { a.Credential.OAuthProvider = "google"; a.Credential.OAuthCookie = "x=1" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, _, a := saved(t)
+			_, r, e := s.Load(context.Background(), a.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			mutate(&a)
+			a.Credential.Generation++
+			if e = s.Save(context.Background(), a, r); core.ErrorKind(e) != "credential_unreadable" {
+				t.Fatal(e)
+			}
+		})
+	}
+}
+
 func TestStableRebindID(t *testing.T) {
 	a := sample()
 	id := a.ID

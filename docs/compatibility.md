@@ -2,7 +2,11 @@
 
 [简体中文 README](../README.md) · [English README](../README.en.md)
 
-插件使用 CPA C ABI。v0.1.2 的六个平台均通过原生构建、单元测试、静态检查、UI 和打包测试，以及全部 9 项真实 CPA 集成测试，无集成测试跳过。CPA v8.0.58 宿主固定提交为 `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`。其他 CPA 版本需保持兼容的插件 ABI。
+插件使用 CPA C ABI。v0.2.0 沿用下表的六平台发布工作流，在每个平台执行原生构建、单元测试、静态检查、UI、打包及真实 CPA 集成测试；全部通过后才生成完整发布包和校验值，具体运行记录见该版本的 GitHub Release。以下链接和已完成的验证记录对应 v0.1.2，不替代 v0.2.0 的发布验证。
+
+v0.1.2 的六个平台均通过原生构建、单元测试、静态检查、UI 和打包测试，以及全部 9 项真实 CPA 集成测试，无集成测试跳过。CPA v8.0.58 宿主固定提交为 `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`。其他 CPA 版本需保持兼容的插件 ABI。
+
+v0.2.0 retains the six-platform release workflow below: native builds, unit tests, vet, UI, packaging, and real CPA integration tests run on each platform before a complete bundle and checksums are produced. The version's GitHub Release links its verification run. The completed records linked below belong to v0.1.2 and do not substitute for v0.2.0 release verification.
 
 All six v0.1.2 platforms passed native builds, unit tests, vet, UI and packaging tests, and all nine real CPA integration tests without skips. The CPA v8.0.58 host is pinned to `e5e6ad1e1b91fc20ab9964e6fb22c0c269b9d882`; other CPA versions must retain the compatible C ABI.
 
@@ -33,4 +37,8 @@ Real CPA integration workflows validate registration, background credential call
 
 The reference NewAPI API revision is `a3fd673bb7897691b1041aaf8d78bab6cc15e1d5`. A real older NewAPI deployment was also validated for legacy-token binding, statistics synchronization, and already-checked-in scheduled/manual tasks. A fresh check-in reward was not part of that observation because the account had already checked in. Custom site forks may differ in API scopes, expiry rules, or interactive challenges.
 
-NewAPI 接口参考版本为 `a3fd673bb7897691b1041aaf8d78bab6cc15e1d5`。真实旧版站点已验证旧令牌绑定、统计同步以及已签到时的自动/手动任务；该次验证前账号已经签到，未据此宣称验证了新增奖励。定制站点的权限、有效期和交互验证规则可能不同。
+Login-reward mode (`checkin_mode=login`) targets sites that grant the daily reward on a fresh login. The `/api/user/self` evidence fields, the one-time state request, and the OAuth callback contract follow a public verified implementation (all-api-hub, 2026-09) for AgentRouter-style forks. On 2026-11-16 the current NewAPI contract was additionally exercised from the deployment server against `freegg.app` (NewAPI `v1.0.0-rc.49`): `POST /api/oauth/state` with `{"provider":"github","intent":"login"}` returned a `flow_token`, the GitHub authorize endpoint redirected to the site, and `GET /api/oauth/github?code=…&state=…` returned `access_token`, `session`, and `new_api_refresh`; the minted token then read `/api/user/self` successfully. That replay used the same request sequence as the plugin but was not a console bind, and the AgentRouter legacy `GET /api/oauth/state?mode=login` form has not been exercised against a real AgentRouter site from this repository. `freegg.app` also omits `last_login_time` and records its first-visit daily allowance in `setting.allowance_date`; that date is treated as the same-day reward signal. Simulated-site tests do not count as live verification. Automatic login is attempted at most once per day; an attempt marker is persisted before the callback, and an uncertain result only triggers a reward-evidence query rather than a replay. A quota rise without a login signal from the execution day is treated as an unattributed baseline change, not as today's reward.
+
+NewAPI 接口参考版本为 `a3fd673bb7897691b1041aaf8d78bab6cc15e1d5`。
+
+登录即签到模式（`checkin_mode=login`）针对"奖励绑定重新登录"的站点：`/api/user/self` 证据字段、一次性 state 请求与 OAuth 回调契约针对 AgentRouter 一类旧版参照公开实现（all-api-hub 2026-09 验证记录）编写。2026-11-16 另从部署服务器对 `freegg.app`（NewAPI `v1.0.0-rc.49`）实测了新版契约：`POST /api/oauth/state`（`{"provider":"github","intent":"login"}`）返回 `flow_token`，GitHub 授权端点重定向回站点，`GET /api/oauth/github?code=…&state=…` 返回 `access_token`、`session` 与 `new_api_refresh`，随后用该令牌成功读取 `/api/user/self`。该次实测与插件使用相同请求序列，但不是控制台绑定；AgentRouter 旧版 `GET /api/oauth/state?mode=login` 尚未在本仓库内对真实站点实测。`freegg.app` 不返回 `last_login_time`，而是把每日首次访问的固定补贴日期记录在 `setting.allowance_date`，插件把该日期当作当日到账信号。模拟站点测试不代表实站验证。自动登录每天最多尝试一次；回调前持久化尝试标记，结果不确定时只查询到账证据，不重放登录。没有执行日登录信号的额度上涨只作为基线更新，不冒称今日奖励。

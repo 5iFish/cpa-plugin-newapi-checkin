@@ -8,16 +8,16 @@ Manage accounts across NewAPI sites, schedule daily check-ins, and view credenti
 
 ## Downloads
 
-**v0.1.2** provides the six native packages below. All six passed native builds and real CPA integration verification (nine integration tests per platform). Use the Download link above to get the release. `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
+**v0.2.0** is built separately for the six native platforms below. The release workflow runs native builds and real CPA integration tests on every platform and collects archives and checksums only after all jobs pass. Use the Download link above; verification records are in the [compatibility notes](docs/compatibility.md). `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
 
 | Platform | Release asset | Plugin inside the ZIP |
 | --- | --- | --- |
-| Windows x64 | `newapi-checkin_0.1.2_windows_amd64.zip` | `newapi-checkin.dll` |
-| Windows ARM64 | `newapi-checkin_0.1.2_windows_arm64.zip` | `newapi-checkin.dll` |
-| Linux x86_64 | `newapi-checkin_0.1.2_linux_amd64.zip` | `newapi-checkin.so` |
-| Linux ARM64 | `newapi-checkin_0.1.2_linux_arm64.zip` | `newapi-checkin.so` |
-| macOS Intel | `newapi-checkin_0.1.2_darwin_amd64.zip` | `newapi-checkin.dylib` |
-| macOS Apple Silicon (M series) | `newapi-checkin_0.1.2_darwin_arm64.zip` | `newapi-checkin.dylib` |
+| Windows x64 | `newapi-checkin_0.2.0_windows_amd64.zip` | `newapi-checkin.dll` |
+| Windows ARM64 | `newapi-checkin_0.2.0_windows_arm64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.2.0_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.2.0_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.2.0_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon (M series) | `newapi-checkin_0.2.0_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
 Download archives and `checksums.txt` from the same release. On Linux, run `sha256sum -c checksums.txt --ignore-missing`. On macOS, compare `shasum -a 256 <archive>` with the checksum file; on Windows, use `Get-FileHash -Algorithm SHA256 <archive>`.
 
@@ -49,7 +49,9 @@ plugins:
 3. Start CPA and open **NewAPI 签到** from its plugin menu, or visit `/v0/resource/plugins/newapi-checkin/console`.
 4. Enter the CPA management key and add a site account. The key stays in the current tab's `sessionStorage`, never in the URL. Management authentication failures stop polling until a valid key is entered.
 
-Static UI assets are public; account and task data require authentication through `/v0/management/plugins/newapi-checkin/…`. Use HTTPS for remote management. The bundled management UI currently uses Chinese; this repository provides both Chinese and English documentation.
+Static UI assets are public; account and task data require authentication through `/v0/management/plugins/newapi-checkin/…`. Use HTTPS for remote management.
+
+The console's "refresh balances" action only refreshes each account's wallet balance; model usage lives in the statistics panel above the account list, which aggregates the bound accounts' site logs for 24h / 7d / 30d: the left card shows token shares by account or model, the right card a per-bucket stacked model chart and ranking, including cache rate, request counts, converted cost and average RPM/TPM. Results are cached per range in the state file and fetched live only when switching ranges or clicking "refresh statistics"; data comes from the site's own consumption log `/api/log/self`, aggregates only, no request details, and a failed log read only drops that account from the statistics. The bundled management UI currently uses Chinese; this repository provides both Chinese and English documentation.
 
 ## Account authentication
 
@@ -69,11 +71,24 @@ Binding validates identity and reads check-in state. It does not submit a check-
 
 ## Login and check-in
 
-Authentication and reward collection are separate. Upstream NewAPI's `/api/user/login` creates a session; `POST /api/user/checkin` grants check-in rewards. The plugin uses a PAT or a saved session for check-in without asking for a password every day.
+Authentication and reward collection are separate, and each account picks a **check-in mode**:
 
-For `https://new.xkool.cfd`, the public `/api/status` response observed on 2026-11-09 reports `checkin_enabled=true` and `turnstile_check=false`. Its FAQ advertises 1–5 credits for daily check-in, so the existing check-in workflow applies. The site does not expose its version; public checks neither rule out custom login rewards nor demonstrate an authenticated reward claim.
+- **Standard API check-in (default, `api`)**: upstream NewAPI's `/api/user/login` creates a session; `POST /api/user/checkin` grants check-in rewards. The plugin uses a PAT or a saved session for check-in without asking for a password every day.
+- **Login-reward mode (`login`)**: for sites such as AgentRouter that grant the daily reward on a fresh login. These sites expose no usable check-in endpoint (live probing: `sign_in` 404, `checkin` rejects tokens), so the plugin only detects the reward via the access token and can optionally perform the daily login for you.
 
-Enter the site's root URL and its personal access token, rather than a model API key or the CPA management key. After binding, run a manual check-in or wait for the schedule. There is currently no account-level login-only mode. Saving credentials or refreshing access tokens is not reported as a successful check-in. Initial binding only validates and saves; scheduled work can subsequently run, and rebinding an existing account queues a follow-up check that may submit a check-in.
+For `https://new.xkool.cfd`, the public `/api/status` response observed on 2026-11-09 reports `checkin_enabled=true` and `turnstile_check=false`. Its FAQ advertises 1–5 credits for daily check-in, so the standard mode applies. The site does not expose its version; public checks neither rule out custom login rewards nor demonstrate an authenticated reward claim.
+
+### How login-reward mode works
+
+Login mode supports a PAT/access token, a dedicated site refresh cookie, or the automatic third-party session channel (plus the site user ID where required). The third-party channel performs a site login during binding and saves the resulting access token and refresh cookie. Site-password binding is not available in login mode. Reward checks run daily on the schedule:
+
+- **Reward detection**: a rise in the granted total from `GET /api/user/self` (`quota + used_quota`; spending does not change it) marks the reward as arrived only when `last_login_time` falls on the current execution day or the login callback returned a `checked_in` receipt; the delta is shown as an inferred amount. Sites that omit `last_login_time` and credit a fixed allowance on the first signed-in visit of each day (for example freegg.app) use `setting.allowance_date` equal to the execution day as the same-day signal. A rise without a same-day signal is adopted into the baseline instead of being claimed as today's reward. A newer signal without a total rise is recorded as amount-unknown (likely already claimed today). No hard-coded reward amount, no fabricated server date.
+- **Semi-automatic (default)**: without an imported third-party cookie the account shows "login pending today" and the console offers an "open site login" link; log in once in any browser (usually after logging out the old session) and the next detection records the reward. "Detect reward" only queries evidence and never triggers a login.
+- **Fully automatic (optional)**: after importing a GitHub/LinuxDO session cookie header, the plugin replays the OAuth login chain server-side every day over plain HTTP (request a one-time state from the site's `/api/oauth/state` — current NewAPI returns a `flow_token` from `POST`, while AgentRouter-style forks use `GET ?mode=login`; both are supported — hit the provider authorize endpoint with the cookie, then return to the site's `/api/oauth/<provider>` callback) — no browser, no check-in API. Each login uses an isolated site session; an attempt marker is persisted before the callback, so an uncertain result is never resolved by replaying the chain — only reward evidence is queried. An expired cookie, a consent prompt, or a site challenge pauses the account with a clear status; rechecking only refreshes evidence and does not clear an unverified third-party session pause.
+
+**Before importing a cookie**: a third-party session cookie is equivalent to control of your GitHub/LinuxDO account. It is stored only in the CPA auth directory credential file, sent only to the matching provider domain, and never sent to the check-in site, written to state/logs/console/API responses, or shared anywhere else. Guard the CPA auth directory like a password, and accept the gray-zone ToS risk of automated logins (same as comparable open-source tools). Switching the account back to standard mode clears the stored cookie.
+
+Enter the site's root URL and its personal access token, rather than a model API key or the CPA management key. Initial binding only validates and saves (login mode also records the reward baseline so the first day is not a false "pending"); scheduled work runs afterwards, and rebinding an existing account queues a follow-up check that may submit a check-in.
 
 ## Scheduling, retries, and statistics
 
@@ -136,7 +151,7 @@ Run automated checks:
 
 ```sh
 GOWORK=off CGO_ENABLED=1 go test -p=2 ./... -count=1
-node --test tests/ui/console.test.mjs
+node --test tests/ui/*.test.mjs
 python3 -m unittest discover -s tests/packaging -v
 GOWORK=off go vet ./...
 GOWORK=off CGO_ENABLED=1 go test -race -p=2 ./internal/core ./internal/credential ./internal/account ./internal/config ./internal/engine ./internal/app

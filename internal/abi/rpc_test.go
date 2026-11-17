@@ -2,6 +2,7 @@ package abi
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -19,6 +20,15 @@ func TestRegistrationManagementOnly(t *testing.T) {
 		t.Fatalf("unexpected capabilities: %s", b)
 	}
 }
+func TestRegistrationVersionMatchesRelease(t *testing.T) {
+	b, err := os.ReadFile("../../VERSION")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := Registration().Metadata.Version, strings.TrimSpace(string(b)); got != want {
+		t.Fatalf("plugin version %q does not match VERSION %q", got, want)
+	}
+}
 func TestLifecycleConfigDecodeOnce(t *testing.T) {
 	input, _ := json.Marshal(map[string]any{"config_yaml": []byte("enabled: true\n")})
 	got, err := DecodeConfig(input)
@@ -31,7 +41,7 @@ func TestLifecycleConfigDecodeOnce(t *testing.T) {
 }
 func TestManagementPathPrefix(t *testing.T) {
 	r := ManagementRegistration()
-	if len(r.Routes) != 6 || len(r.Resources) != 3 {
+	if len(r.Routes) != 9 || len(r.Resources) != 3 {
 		t.Fatalf("routes: %+v", r)
 	}
 	for _, v := range r.Routes {

@@ -27,7 +27,11 @@ func classify(r *http.Response, v *wireEnvelope) *core.APIError {
 		}
 		lower := strings.ToLower(text)
 		switch {
-		case strings.Contains(lower, "new-api-user") && strings.Contains(lower, "not provided"):
+		// Any complaint about New-Api-User (missing in English or Chinese, or a
+		// mismatch with the token's owner) needs the same remedy: fill in the
+		// numeric ID of the account that issued the token. Reporting it as an
+		// expired credential would send the user looking for a new token.
+		case strings.Contains(lower, "new-api-user"):
 			kind = "user_id_required"
 		case strings.Contains(lower, "turnstile"):
 			kind = "turnstile_blocked"

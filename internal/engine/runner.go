@@ -6,6 +6,7 @@ import (
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/credential"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/newapi"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
+	"time"
 )
 
 type Runner struct {
@@ -13,10 +14,13 @@ type Runner struct {
 	client *newapi.Client
 	state  *state.Store
 	clock  core.Clock
+	// Location supplies the schedule timezone for login-mode day keys; nil
+	// falls back to the host local timezone.
+	Location func() *time.Location
 }
 
 func NewRunner(b *credential.Broker, c *newapi.Client, s *state.Store, clock core.Clock) *Runner {
-	return &Runner{b, c, s, clock}
+	return &Runner{broker: b, client: c, state: s, clock: clock}
 }
 func (r *Runner) Attempt(ctx context.Context, id string) (core.AttemptResult, error) {
 	return r.attempt(ctx, id, false, "")
@@ -31,7 +35,16 @@ func (r *Runner) attempt(ctx context.Context, id string, queryOnly bool, workID 
 				return core.Error("canceled")
 			}
 		}
+		// loginAttempt persists its own terminal outcome (reward snapshot plus
+		// attempt result) atomically; the generic path below must not record it
+		// a second time.
+		loginRecorded := false
 		attemptErr := use(func(a core.Account, bearer string) error {
+			if a.EffectiveCheckinMode() == core.CheckinModeLogin {
+				var e error
+				loginRecorded, e = r.loginAttempt(ctx, id, a, bearer, queryOnly, &result)
+				return e
+			}
 			info, e := r.client.Probe(ctx, a.Site)
 			if e != nil {
 				return e
@@ -46,6 +59,13 @@ func (r *Runner) attempt(ctx context.Context, id string, queryOnly bool, workID 
 			if e != nil {
 				return e
 			}
+			// The wallet balance rides along on the daily stats query; a
+			// failure here must never fail the check-in itself.
+			var balance *int64
+			if idn, e2 := r.client.Self(ctx, a.Site, bearer, a.UpstreamUserID); e2 == nil && idn.ID == a.UpstreamUserID && idn.QuotaPresent {
+				q := idn.Quota
+				balance = &q
+			}
 			synced := r.clock.Now().UTC()
 			if e = r.state.Update(func(s *state.Snapshot) error {
 				ar := s.Accounts[id]
@@ -53,6 +73,12 @@ func (r *Runner) attempt(ctx context.Context, id string, queryOnly bool, workID 
 				ar.TotalCheckins = stats.TotalCheckins
 				ar.StatsSyncedAt = synced
 				ar.StatsStale = false
+				if info.QuotaPerUnit > 0 {
+					ar.BalancePerUnit = info.QuotaPerUnit
+				}
+				if balance != nil {
+					ar.BalanceQuota = balance
+				}
 				s.Accounts[id] = ar
 				return nil
 			}); e != nil {
@@ -119,15 +145,23 @@ func (r *Runner) attempt(ctx context.Context, id string, queryOnly bool, workID 
 				return nil
 			})
 		})
+		deferred := core.ErrorKind(attemptErr) == "login_deferred"
 		if attemptErr != nil {
 			result.Status = core.ErrorKind(attemptErr)
+		}
+		if deferred {
+			// A cooldown deferral is not a completed business attempt and must
+			// not replace the last result or pause the account.
+			result.Status = core.RewardStatePendingLogin
 		}
 		if result.Status == "already" {
 			result.NeedsReconcile = false
 		}
 		saveErr := r.state.Update(func(s *state.Snapshot) error {
-			s.RecordResult(id, result)
-			if attemptErr != nil && !Retryable(attemptErr) && result.Status != "unknown_error" && result.Status != "canceled" && result.Status != "retry_exhausted" {
+			if !deferred && !loginRecorded {
+				s.RecordResult(id, result)
+			}
+			if attemptErr != nil && !deferred && !Retryable(attemptErr) && result.Status != "unknown_error" && result.Status != "canceled" && result.Status != "retry_exhausted" {
 				a := s.Accounts[id]
 				a.Status = result.Status
 				if result.Status == "permission_denied" {

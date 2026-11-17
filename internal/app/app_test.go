@@ -32,7 +32,7 @@ func TestApplicationOnlyManagement(t *testing.T) {
 		t.Fatal(e)
 	}
 	var routes abi.Routes
-	if json.Unmarshal(b, &routes) != nil || len(routes.Routes) != 6 {
+	if json.Unmarshal(b, &routes) != nil || len(routes.Routes) != 9 {
 		t.Fatal(string(b))
 	}
 }

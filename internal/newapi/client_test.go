@@ -65,6 +65,31 @@ func TestCheckinContract(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
+func TestSelfParsesRewardFields(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":{"id":814507,"username":"u","quota":44749966,"used_quota":17750034,"last_login_time":1794654511}}`))
+	}))
+	defer s.Close()
+	id, e := NewClient(s.Client()).Self(context.Background(), s.URL, "test-secret", 0)
+	if e != nil || id.ID != 814507 {
+		t.Fatal(id, e)
+	}
+	if id.Quota != 44749966 || id.UsedQuota != 17750034 || id.LastLogin != 1794654511 {
+		t.Fatal(id)
+	}
+}
+
+func TestSelfWithoutRewardFieldsStillValidIdentity(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":{"id":1,"username":"u"}}`))
+	}))
+	defer s.Close()
+	id, e := NewClient(s.Client()).Self(context.Background(), s.URL, "test-secret", 0)
+	if e != nil || id.Quota != 0 || id.UsedQuota != 0 || id.LastLogin != 0 {
+		t.Fatal(id, e)
+	}
+}
+
 func TestScopeErrors(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)
@@ -91,14 +116,45 @@ func TestHTMLResponse(t *testing.T) {
 	_, e := NewClient(s.Client()).Self(context.Background(), s.URL, "", 0)
 	kind(t, e, "unsupported_site")
 }
+func TestBotChallengePageIsReportedAsWafBlocked(t *testing.T) {
+	// Aliyun WAF answers /api/user/self with HTTP 200 and its captcha loader;
+	// that is a wall in front of the endpoint, not a site without the API.
+	pages := map[string]string{
+		"aliyun":     `<!doctype html><meta name="aliyun_waf_aa" content="x"><script src="https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js"></script>`,
+		"cloudflare": `<html><script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script></html>`,
+	}
+	for name, page := range pages {
+		t.Run(name, func(t *testing.T) {
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write([]byte(page))
+			}))
+			defer s.Close()
+			_, e := NewClient(s.Client()).Self(context.Background(), s.URL, "", 0)
+			kind(t, e, "waf_blocked")
+		})
+	}
+}
 func TestMissingUserIDIsActionable(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"success":false,"message":"Unauthorized, New-Api-User header not provided"}`))
-	}))
-	defer s.Close()
-	_, err := NewClient(s.Client()).Self(context.Background(), s.URL, "valid-token", 0)
-	kind(t, err, "user_id_required")
+	// Real NewAPI/AgentRouter wording: the header is missing (English or
+	// Chinese) or does not match the token's owner. All of them must guide the
+	// user to the numeric ID instead of claiming the credential expired.
+	for name, body := range map[string]string{
+		"english missing":  `{"success":false,"message":"Unauthorized, New-Api-User header not provided"}`,
+		"chinese missing":  `{"success":false,"message":"无权进行此操作，未提供 New-Api-User"}`,
+		"chinese mismatch": `{"success":false,"message":"无权进行此操作，New-Api-User 与登录用户不匹配"}`,
+		"english mismatch": `{"success":false,"message":"unauthorized: New-Api-User does not match the logged-in user"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(body))
+			}))
+			defer s.Close()
+			_, err := NewClient(s.Client()).Self(context.Background(), s.URL, "valid-token", 0)
+			kind(t, err, "user_id_required")
+		})
+	}
 }
 func TestMissingRequiredFields(t *testing.T) {
 	for _, body := range []string{`{"success":true,"data":{"stats":{"total_quota":0,"total_checkins":0}}}`, `{"success":true,"data":{"stats":{"checked_in_today":false}}}`} {

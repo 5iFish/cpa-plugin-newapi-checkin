@@ -16,7 +16,10 @@ import (
 
 const ResponseLimit = 2 << 20
 
-type Client struct{ http *http.Client }
+type Client struct {
+	http           *http.Client
+	loginEndpoints func(provider string) LoginEndpoints
+}
 
 func NewClient(client *http.Client) *Client {
 	if client == nil {
@@ -55,6 +58,37 @@ func NormalizeSite(raw string) (string, error) {
 	return u.String(), nil
 }
 
+// browserUA is the user agent all site requests present.
+const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+// challengeMarkers identify bot-verification pages that sites and CDNs return
+// with an HTML body instead of the API's JSON envelope. Aliyun WAF fronts some
+// NewAPI sites (for example /api/user/self) and answers server requests with
+// its captcha loader; Cloudflare uses its own challenge script.
+var challengeMarkers = [][]byte{
+	[]byte("aliyun_waf"),
+	[]byte("aliyuncaptcha"),
+	[]byte("acw_sc__v2"),
+	[]byte("cf-chl"),
+	[]byte("challenge-platform"),
+}
+
+// botChallenge reports whether a non-JSON response is a human-verification
+// page rather than a genuine site incompatibility. Only the head of the body
+// is scanned: challenge scripts load in the first few KB.
+func botChallenge(raw []byte) bool {
+	if len(raw) > 16<<10 {
+		raw = raw[:16<<10]
+	}
+	lower := bytes.ToLower(raw)
+	for _, marker := range challengeMarkers {
+		if bytes.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 type wireEnvelope struct {
 	Success    *bool           `json:"success"`
 	Code       string          `json:"code"`
@@ -79,6 +113,11 @@ func (c *Client) request(ctx context.Context, site, path, method, bearer string,
 	if e != nil {
 		return nil, nil, core.Error("invalid_input")
 	}
+	// Bot walls (Aliyun WAF fronts some NewAPI sites) challenge Go's default
+	// user agent with a JS page instead of JSON, so every request presents a
+	// stable browser identity.
+	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -106,6 +145,11 @@ func (c *Client) request(ctx context.Context, site, path, method, bearer string,
 	}
 	var envelope wireEnvelope
 	decodeErr := json.Unmarshal(raw, &envelope)
+	if decodeErr != nil && botChallenge(raw) {
+		// A captcha wall hides the endpoint itself; report it separately from
+		// a site that genuinely lacks the NewAPI API.
+		return nil, res, core.Error(core.ErrorWafBlocked)
+	}
 	if res.StatusCode >= 300 || (decodeErr == nil && envelope.Success != nil && !*envelope.Success) {
 		return nil, res, classify(res, &envelope)
 	}

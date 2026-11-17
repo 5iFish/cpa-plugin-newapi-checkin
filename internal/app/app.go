@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/abi"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/account"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/config"
@@ -11,8 +13,6 @@ import (
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/engine"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/newapi"
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/state"
-	"encoding/json"
-	"errors"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"sync"
 	"time"
@@ -51,7 +51,16 @@ func (a *App) init() error {
 	broker := credential.NewBroker(repo, s, client, gate, time.Now)
 	accounts := account.NewService(repo, s, client, broker, gate)
 	clock := core.RealClock{}
+	location := func() *time.Location {
+		a.mu.RLock()
+		effective := a.effective
+		a.mu.RUnlock()
+		loc, _ := config.Location(effective)
+		return loc
+	}
+	accounts.Location = location
 	runner := engine.NewRunner(broker, client, s, clock)
+	runner.Location = location
 	jobs := engine.NewJobs(runner, s, clock)
 	scheduler := engine.NewScheduler(repo, s, jobs, clock, nil)
 	recovered := false

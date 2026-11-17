@@ -7,32 +7,69 @@ import (
 )
 
 type AccountRecord struct {
-	ID                      string              `json:"account_id"`
-	Site                    string              `json:"site"`
-	UpstreamUserID          int64               `json:"upstream_user_id"`
-	Username                string              `json:"username"`
-	Label                   string              `json:"label"`
-	Kind                    string              `json:"kind"`
-	Channel                 string              `json:"channel"`
-	Status                  string              `json:"status"`
-	PhysicalPath            string              `json:"physical_path"`
-	LastGeneration          uint64              `json:"last_generation"`
-	ExpiresAt               *int64              `json:"expires_at,omitempty"`
-	TokenHint               string              `json:"token_hint,omitempty"`
-	WritePermissionVerified bool                `json:"write_permission_verified"`
-	PermissionDenied        bool                `json:"permission_denied,omitempty"`
-	TotalQuota              int64               `json:"total_quota"`
-	TotalCheckins           int64               `json:"total_checkins"`
-	StatsSyncedAt           time.Time           `json:"stats_synced_at"`
-	StatsStale              bool                `json:"stats_stale"`
-	LastResult              *core.AttemptResult `json:"last_result,omitempty"`
+	ID             string `json:"account_id"`
+	Site           string `json:"site"`
+	UpstreamUserID int64  `json:"upstream_user_id"`
+	Username       string `json:"username"`
+	Label          string `json:"label"`
+	Kind           string `json:"kind"`
+	Channel        string `json:"channel"`
+	// OAuthProvider mirrors the credential's third-party login provider
+	// (github/linuxdo); empty for accounts without an imported session. It is
+	// not a secret and lets the rebind dialog preselect the login method.
+	OAuthProvider string `json:"oauth_provider,omitempty"`
+	CheckinMode   string `json:"checkin_mode"`
+	Status        string `json:"status"`
+	// CreatedAt records the first successful bind; rebinds preserve it. The
+	// console orders the account list by this field (oldest first).
+	CreatedAt               time.Time `json:"created_at,omitempty"`
+	PhysicalPath            string    `json:"physical_path"`
+	LastGeneration          uint64    `json:"last_generation"`
+	ExpiresAt               *int64    `json:"expires_at,omitempty"`
+	TokenHint               string    `json:"token_hint,omitempty"`
+	WritePermissionVerified bool      `json:"write_permission_verified"`
+	PermissionDenied        bool      `json:"permission_denied,omitempty"`
+	TotalQuota              int64     `json:"total_quota"`
+	TotalCheckins           int64     `json:"total_checkins"`
+	StatsSyncedAt           time.Time `json:"stats_synced_at"`
+	StatsStale              bool      `json:"stats_stale"`
+	RewardTotal             int64     `json:"reward_total,omitempty"`
+	RewardLastLogin         int64     `json:"reward_last_login,omitempty"`
+	RewardDayKey            string    `json:"reward_day_key,omitempty"`
+	RewardState             string    `json:"reward_state,omitempty"`
+	RewardBaseline          bool      `json:"reward_baseline,omitempty"`
+	RewardReceipt           bool      `json:"reward_receipt,omitempty"`
+	RewardAttemptDayKey     string    `json:"reward_attempt_day_key,omitempty"`
+	RewardAttemptAt         int64     `json:"reward_attempt_at,omitempty"`
+	// BalanceQuota is the site wallet balance (the raw quota field from
+	// /api/user/self). Nil means it has not been observed for this account.
+	BalanceQuota *int64 `json:"balance_quota,omitempty"`
+	// BalancePerUnit is the site's quota-per-USD ratio from /api/status, used
+	// to render the balance the way the site's own wallet page does.
+	BalancePerUnit int64               `json:"balance_per_unit,omitempty"`
+	LastResult     *core.AttemptResult `json:"last_result,omitempty"`
+}
+
+// Reward returns the non-secret evidence used to decide whether today's login
+// reward has arrived.
+func (a AccountRecord) Reward() core.RewardSnapshot {
+	return core.RewardSnapshot{Total: a.RewardTotal, LastLogin: a.RewardLastLogin, DayKey: a.RewardDayKey, State: a.RewardState, Baseline: a.RewardBaseline, Receipt: a.RewardReceipt}
+}
+
+func (a *AccountRecord) SetReward(s core.RewardSnapshot) {
+	a.RewardTotal = s.Total
+	a.RewardLastLogin = s.LastLogin
+	a.RewardDayKey = s.DayKey
+	a.RewardState = s.State
+	a.RewardBaseline = s.Baseline
+	a.RewardReceipt = s.Receipt
 }
 
 func (a AccountRecord) Summary() core.AccountSummary {
-	return core.AccountSummary{UpstreamUserID: a.UpstreamUserID, ID: a.ID, Site: a.Site, Username: a.Username, Label: a.Label, Kind: a.Kind, Channel: a.Channel, Status: a.Status, ExpiresAt: a.ExpiresAt, TokenHint: a.TokenHint, WritePermissionVerified: a.WritePermissionVerified, TotalQuota: a.TotalQuota, TotalCheckins: a.TotalCheckins, StatsSyncedAt: a.StatsSyncedAt, StatsStale: a.StatsStale, LastResult: a.LastResult}
+	return core.AccountSummary{UpstreamUserID: a.UpstreamUserID, ID: a.ID, Site: a.Site, Username: a.Username, Label: a.Label, Kind: a.Kind, Channel: a.Channel, OAuthProvider: a.OAuthProvider, CheckinMode: a.CheckinMode, RewardState: a.RewardState, RewardTotal: a.RewardTotal, Status: a.Status, CreatedAt: a.CreatedAt, ExpiresAt: a.ExpiresAt, TokenHint: a.TokenHint, WritePermissionVerified: a.WritePermissionVerified, TotalQuota: a.TotalQuota, TotalCheckins: a.TotalCheckins, StatsSyncedAt: a.StatsSyncedAt, StatsStale: a.StatsStale, BalanceQuota: a.BalanceQuota, BalancePerUnit: a.BalancePerUnit, LastResult: a.LastResult}
 }
 func Record(a core.Account, path, status string) AccountRecord {
-	r := AccountRecord{ID: a.ID, Site: a.Site, UpstreamUserID: a.UpstreamUserID, Username: a.Username, Label: a.Label, Kind: a.Credential.Kind, Channel: a.Credential.Channel, Status: status, PhysicalPath: path, LastGeneration: a.Credential.Generation, ExpiresAt: a.Credential.ExpiresAtHint}
+	r := AccountRecord{ID: a.ID, Site: a.Site, UpstreamUserID: a.UpstreamUserID, Username: a.Username, Label: a.Label, Kind: a.Credential.Kind, Channel: a.Credential.Channel, OAuthProvider: a.Credential.OAuthProvider, CheckinMode: a.EffectiveCheckinMode(), Status: status, PhysicalPath: path, LastGeneration: a.Credential.Generation, ExpiresAt: a.Credential.ExpiresAtHint, CreatedAt: time.Now().UTC()}
 	if a.Credential.Kind == "session" {
 		expiry := a.Credential.SessionExpiresAt
 		r.ExpiresAt = &expiry
@@ -94,7 +131,10 @@ type Snapshot struct {
 	RefreshPending    map[string]RefreshPending `json:"refresh_pending"`
 	KnownSessions     map[string]KnownSession   `json:"known_sessions"`
 	DeletePending     map[string]bool           `json:"delete_pending"`
-	Error             string                    `json:"error,omitempty"`
+	// Stats caches the last console statistics payload per range key
+	// ("24h"/"7d"/"30d"). Aggregates only; no log details.
+	Stats map[string]core.StatsSummary `json:"stats,omitempty"`
+	Error string                       `json:"error,omitempty"`
 }
 
 func (s *Snapshot) init() {
@@ -118,6 +158,9 @@ func (s *Snapshot) init() {
 	}
 	if s.DeletePending == nil {
 		s.DeletePending = map[string]bool{}
+	}
+	if s.Stats == nil {
+		s.Stats = map[string]core.StatsSummary{}
 	}
 	if s.History == nil {
 		s.History = []HistoryEntry{}
