@@ -136,6 +136,9 @@ type Snapshot struct {
 	Stats map[string]core.StatsSummary `json:"stats,omitempty"`
 	// Health caches per-account site log counters; no raw requests or secrets.
 	Health map[string]core.AccountHealth `json:"health,omitempty"`
+	// Models caches the per-account available model names from
+	// /api/user/models; names only, no credentials or site metadata.
+	Models map[string]core.AccountModels `json:"models,omitempty"`
 	Error  string                        `json:"error,omitempty"`
 }
 
@@ -166,6 +169,9 @@ func (s *Snapshot) init() {
 	}
 	if s.Health == nil {
 		s.Health = map[string]core.AccountHealth{}
+	}
+	if s.Models == nil {
+		s.Models = map[string]core.AccountModels{}
 	}
 	if s.History == nil {
 		s.History = []HistoryEntry{}

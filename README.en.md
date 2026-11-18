@@ -8,16 +8,16 @@ Manage accounts across NewAPI sites, schedule daily check-ins, and view credenti
 
 ## Downloads
 
-**v0.2.1** is built separately for the six native platforms below. The release workflow runs native builds and real CPA integration tests on every platform and collects archives and checksums only after all jobs pass. Use the Download link above; verification records are in the [compatibility notes](docs/compatibility.md). `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
+**v0.2.2** is built separately for the six native platforms below. The release workflow runs native builds and real CPA integration tests on every platform and collects archives and checksums only after all jobs pass. Use the Download link above; verification records are in the [compatibility notes](docs/compatibility.md). `amd64` means `x86_64 / x64`; `arm64` means `aarch64`. 32-bit ARM is not included.
 
 | Platform | Release asset | Plugin inside the ZIP |
 | --- | --- | --- |
-| Windows x64 | `newapi-checkin_0.2.1_windows_amd64.zip` | `newapi-checkin.dll` |
-| Windows ARM64 | `newapi-checkin_0.2.1_windows_arm64.zip` | `newapi-checkin.dll` |
-| Linux x86_64 | `newapi-checkin_0.2.1_linux_amd64.zip` | `newapi-checkin.so` |
-| Linux ARM64 | `newapi-checkin_0.2.1_linux_arm64.zip` | `newapi-checkin.so` |
-| macOS Intel | `newapi-checkin_0.2.1_darwin_amd64.zip` | `newapi-checkin.dylib` |
-| macOS Apple Silicon (M series) | `newapi-checkin_0.2.1_darwin_arm64.zip` | `newapi-checkin.dylib` |
+| Windows x64 | `newapi-checkin_0.2.2_windows_amd64.zip` | `newapi-checkin.dll` |
+| Windows ARM64 | `newapi-checkin_0.2.2_windows_arm64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.2.2_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.2.2_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.2.2_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon (M series) | `newapi-checkin_0.2.2_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
 Download archives and `checksums.txt` from the same release. On Linux, run `sha256sum -c checksums.txt --ignore-missing`. On macOS, compare `shasum -a 256 <archive>` with the checksum file; on Windows, use `Get-FileHash -Algorithm SHA256 <archive>`.
 
@@ -58,6 +58,8 @@ The console's "refresh balances" action only refreshes each account's wallet bal
 Each account has a full-width timeline below its information row: 48 blocks of 30 minutes covering the last 24 hours. It aggregates that account's `/api/log/self` consumption (`type=2`) and error (`type=5`) records. Green means consumption with no recorded errors, mixed records use a success-ratio color gradient, red means errors only, and gray means no records. Unsupported responses, failed reads, or the 2,000-entry cap per log type show an unknown/incomplete striped state rather than a fabricated rate. Hover, tap, or use keyboard arrow keys for bucket details.
 
 The visible accounts page checks the five-minute cache and starts bounded background refreshes; "刷新请求状态" forces a refresh. Status polling reads cache only, and the usage chart's range does not change this 24-hour window. Failed refreshes retain the old window marked stale; rebinds and deletion invalidate account health. No model probes are sent. **The record success ratio is not uptime:** site errors may include retry attempts or omit failures, and an empty error log does not prove no failures occurred. Only timestamps and counters are retained, not raw logs, error bodies, token names, or IP addresses.
+
+Below the timeline, each account lists the **available models** it may call on its site, read from `/api/user/models` (the model names enabled for the account's user group) and rendered as chips with the full name on hover. The list is cached for twelve hours and shares the same background worker and "刷新请求状态" button; failed or unsupported reads show an unconfirmed state and keep the previous list marked stale, and a site that returns no models is shown as such. Only model names and timestamps are stored. The site address on the second identity line is a link that opens in a new tab (`noopener`).
 
 ## Account authentication
 

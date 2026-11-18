@@ -7,6 +7,16 @@ export const clearSensitiveFields = form => { for (const input of form.querySele
 // need a credential the server can act on daily (token, refresh cookie, or a
 // third-party session bootstrap) and reject password binds.
 export const allowedChannels = mode => mode === 'login' ? ['token', 'refresh_cookie', 'oauth'] : ['token', 'password', 'refresh_cookie'];
+// The site string is normalized to https by the plugin before it reaches the
+// console; parsing it again keeps a corrupted state file from turning the
+// link into anything other than an http(s) navigation.
+export function renderSiteLink(doc,url){
+  const link=doc.createElement('a');
+  renderText(link,url);
+  link.className='secondary site site-link';
+  try{const parsed=new URL(String(url));if(parsed.protocol==='https:'||parsed.protocol==='http:'){link.href=parsed.href;link.target='_blank';link.rel='noopener noreferrer'}}catch{}
+  return link;
+}
 const failure = kind => Object.assign(new Error(kind),{kind});
 
 export function createHealthController(options={}) {
@@ -23,7 +33,7 @@ export function createHealthController(options={}) {
     if(!force&&last!==null&&now()>=last&&now()-last<interval){schedule();return Promise.resolve()}
     clearTimer();const generation=epoch,c=new AbortController();controller=c;last=now();
     pending=Promise.resolve().then(()=>options.request('/health',{method:'POST',body:{refresh:!!force},signal:c.signal})).then(r=>{
-      if(generation!==epoch||!active())return;if(!r?.health)throw failure('invalid_response');options.onData?.(r.health);
+      if(generation!==epoch||!active())return;if(!r?.health)throw failure('invalid_response');options.onData?.({health:r.health,models:r.models});
     }).catch(e=>{if(generation!==epoch||e.name==='AbortError'||e.kind==='request_stopped')return;if(e.kind==='management_auth_required'){authenticated=false;invalidate()}else options.onError?.(e)}).finally(()=>{pending=null;controller=null;if(last===null)auto();else schedule()});
     return pending;
   }
@@ -42,14 +52,14 @@ export function replaceAccountRows(doc,body,rows){
   if(focus){const target=body.querySelectorAll('.health-block');for(const block of target)if(block.dataset.accountId===focus.id&&block.dataset.index===focus.index){block.focus();break}}
 }
 
-export function renderHealthRow(doc,account,health){
+export function renderHealthRow(doc,account,health,models){
   const node=(tag,text,cls)=>{const el=doc.createElement(tag);if(text!==undefined)renderText(el,text);if(cls)el.className=cls;return el};
   const h=health??{},windowValid=Number.isSafeInteger(h.start)&&h.start>0&&h.end-h.start===86400;
   const countsValid=windowValid&&Array.isArray(h.buckets)&&h.buckets.length===48&&healthCount(h.success)&&healthCount(h.failed)&&h.buckets.every((b,i)=>b&&b.start===h.start+i*1800&&healthCount(b.success)&&healthCount(b.failed))&&h.buckets.reduce((n,b)=>n+b.success,0)===h.success&&h.buckets.reduce((n,b)=>n+b.failed,0)===h.failed;
   const known=countsValid&&h.complete===true&&(!h.error||h.stale),total=known?h.success+h.failed:0,rate=total?((h.success/total)*100).toFixed(1)+'%':null;
   const start=windowValid?h.start:Math.floor(Date.now()/1000)-86400,end=start+86400;
   const row=node('tr',undefined,'account-health-row');row.dataset.accountId=account.account_id;
-  const cell=node('td',undefined,'health-cell');cell.colSpan=7;cell.setAttribute('aria-label',`${account.label||account.username||'账号'} · 近 24 小时请求状态`);row.append(cell);
+  const cell=node('td',undefined,'health-cell');cell.colSpan=7;cell.setAttribute('aria-label',`${account.label||account.username||'账号'} · 近 24 小时请求状态与可用模型`);row.append(cell);
   const wrap=node('div',undefined,'account-health'+(h.stale?' is-stale':'')),head=node('div',undefined,'health-head');cell.append(wrap);wrap.append(head);
   head.append(node('span','近 24 小时请求状态','health-title'));
   let summary=known?(rate?`记录成功率 ${rate}`:'暂无请求记录'):(health?'数据不可确认':'等待刷新');
@@ -85,6 +95,24 @@ export function renderHealthRow(doc,account,health){
   }
   const endpoint=ts=>new Date(ts*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
   const foot=node('div',undefined,'health-foot');foot.append(node('span',endpoint(start),'health-time'),node('span','基于站点日志 · 错误可能包含重试或漏记','health-source'),node('span',endpoint(end),'health-time'));wrap.append(foot);
+  // Available models sit below the status bar, inside the same full-width
+  // cell. Names are rendered as text-only chips with the full name on hover.
+  const m=models??{};
+  const listKnown=Array.isArray(m.models)&&m.models.every(name=>typeof name==='string')&&m.complete===true;
+  const modelsBlock=node('div',undefined,'health-models');
+  const modelsHead=node('div',undefined,'health-models-head');
+  modelsHead.append(node('span','可用模型','health-title'));
+  let modelsSummary=listKnown?(m.models.length?`${m.models.length} 个`:'站点未返回可用模型'):(models?'数据不可确认':'等待刷新');
+  if(m.stale&&listKnown)modelsSummary+=' · 已过期';
+  modelsHead.append(node('span',modelsSummary,'health-summary'));
+  modelsHead.append(node('span',(m.error?message(m.error)+' · ':'')+(m.synced_at&&!String(m.synced_at).startsWith('0001-')?'更新于 '+when(m.synced_at):'尚未读取到模型列表'),'health-meta'));
+  modelsBlock.append(modelsHead);
+  if(listKnown&&m.models.length){
+    const chips=node('div',undefined,'model-chips');
+    for(const name of m.models){const chip=node('span',name,'model-chip');chip.title=name;chips.append(chip)}
+    modelsBlock.append(chips);
+  }
+  wrap.append(modelsBlock);
   return row;
 }
 
@@ -154,15 +182,15 @@ function mount(){
   let snapshot={accounts:[],jobs:{},history:[],schedules:{}};
   let attemptedConnection=false;
   let balanceSynced=false;
-  let healthPayload={accounts:{},refreshing:false},healthController;
+  let healthPayload={accounts:{},refreshing:false},modelsPayload={accounts:{},refreshing:false},healthController;
   // Older builds registered a relay Service Worker on this origin; remove it.
   if('serviceWorker' in navigator)navigator.serviceWorker.getRegistrations().then(rs=>{for(const r of rs){for(const w of [r.active,r.waiting,r.installing])if(w&&w.scriptURL.includes('relay-sw.js')){r.unregister();break}}}).catch(()=>{});
   const notify=(text,error=false)=>{renderText($('notice'),text);$('notice').className=error?'notice error':'notice';$('notice').hidden=false;if($('bind-dialog').open){renderText($('bind-notice'),text);$('bind-notice').hidden=false;}};
   const api=createApiController({storage:sessionStorage,onAuth:valid=>{
     $('auth-panel').hidden=valid;renderText($('connection'),valid?'已连接管理服务':'等待管理密钥');$('workspace').inert=!valid;
-    if(valid){attemptedConnection=true;$('notice').hidden=true;}else{healthPayload={accounts:{},refreshing:false};healthController?.setAccounts([]);if(attemptedConnection)notify(message('management_auth_required'),true)}healthController?.setAuthenticated(valid);
-  },onError:e=>notify(message(e.kind),true),onStatus:data=>{if(data.health)healthPayload=data.health;render(data);healthController?.setAccounts((snapshot.accounts??[]).filter(a=>a.status!=='deleted'&&!['delete_pending','delete_failed'].includes(a.status)).map(a=>a.account_id));autoBalance()}});
-  healthController=createHealthController({request:(path,init)=>api.request(path,init),visible:!document.hidden,onData:data=>{healthPayload=data;render({...snapshot,health:data});void api.poll()},onError:e=>notify('请求状态刷新失败：'+message(e.kind),true)});
+    if(valid){attemptedConnection=true;$('notice').hidden=true;}else{healthPayload={accounts:{},refreshing:false};modelsPayload={accounts:{},refreshing:false};healthController?.setAccounts([]);if(attemptedConnection)notify(message('management_auth_required'),true)}healthController?.setAuthenticated(valid);
+  },onError:e=>notify(message(e.kind),true),onStatus:data=>{if(data.health)healthPayload=data.health;if(data.models)modelsPayload=data.models;render(data);healthController?.setAccounts((snapshot.accounts??[]).filter(a=>a.status!=='deleted'&&!['delete_pending','delete_failed'].includes(a.status)).map(a=>a.account_id));autoBalance()}});
+  healthController=createHealthController({request:(path,init)=>api.request(path,init),visible:!document.hidden,onData:payload=>{healthPayload=payload?.health??{accounts:{},refreshing:false};modelsPayload=payload?.models??{accounts:{},refreshing:false};render(snapshot);void api.poll()},onError:e=>notify('请求状态刷新失败：'+message(e.kind),true)});
   async function run(action,button,success){if(button)button.disabled=true;try{await action();if(success)notify(success);await api.poll()}catch(e){notify(message(e.kind),true)}finally{if(button)button.disabled=false}}
   function button(text,fn,className='quiet'){const b=node('button',text,className);b.type='button';b.addEventListener('click',()=>fn(b));return b}
   function openBind(account){$('bind-form').reset();$('bind-notice').hidden=true;$('bind-id').value=account?.account_id??'';$('bind-oauth-provider').dataset.prev=account?.oauth_provider??'';$('bind-site').value=account?.site??'';$('bind-site').readOnly=!!account;$('bind-label').value=account?.label??'';$('bind-user-id').value=account?.upstream_user_id??'';$('bind-expiry').value=account&&account.expires_at>0?new Date(account.expires_at*1000).toLocaleDateString('sv-SE'):'';renderText($('bind-title'),account?'重新绑定账号':'添加账号');$('bind-mode').value=account?.checkin_mode==='login'?'login':'api';bindMode();const stored=account?.channel;channel(stored&&allowedChannels($('bind-mode').value).includes(stored)?stored:'token');if(account?.oauth_provider){$('bind-oauth-provider').value=account.oauth_provider;oauthProvider()}$('bind-token').required=!account;$('bind-token').placeholder=account&&account.token_hint?`留空沿用已保存的令牌（尾号 ${account.token_hint}）`:'nap_…';$('bind-dialog').showModal();$('bind-site').focus()}
@@ -188,7 +216,7 @@ function mount(){
     $('refresh-health').disabled=healthPayload.refreshing===true;renderText($('refresh-health'),healthPayload.refreshing?'请求状态更新中…':'刷新请求状态');
     if(data.error)notify(message(data.error),true);
     const body=$('account-rows'),accountRows=[];$('empty').hidden=accounts.length!==0;$('account-table').hidden=accounts.length===0;
-    for(const a of accounts){const tr=node('tr',undefined,'account-main-row');tr.dataset.accountId=a.account_id;const identity=node('td');identity.dataset.label='账号';identity.append(node('strong',a.label||a.username),node('span',a.site,'secondary site'),node('span',a.username,'secondary'));tr.append(identity);
+    for(const a of accounts){const tr=node('tr',undefined,'account-main-row');tr.dataset.accountId=a.account_id;const identity=node('td');identity.dataset.label='账号';identity.append(node('strong',a.label||a.username),renderSiteLink(document,a.site),node('span',a.username,'secondary'));tr.append(identity);
       const stateCell=node('td');stateCell.dataset.label='状态';stateCell.append(node('span',a.checkin_mode==='login'&&a.status==='ready'?(a.oauth_provider?'登录领奖·自动':'登录领奖·半自动'):message(a.status),'badge '+(a.status==='ready'?'good':'attention')));if(a.last_result)stateCell.append(node('span',resultText(a,a.last_result.status),'secondary'));if(a.checkin_mode==='login'&&a.reward_state&&a.reward_state!==a.last_result?.status)stateCell.append(node('span',resultText(a,a.reward_state),'secondary'));tr.append(stateCell);
       const cred=node('td');cred.dataset.label='凭证';cred.append(node('span',a.kind==='pat'?'PAT':a.kind==='session'?'登录会话':'旧版令牌'));if(a.checkin_mode==='login')cred.append(node('span','登录领奖','secondary'));let expiry=a.expires_at===0&&a.kind!=='session'?'用户标注不设到期':a.expires_at?when(a.expires_at):'到期时间未知';cred.append(node('span',expiry,'secondary'));if(a.expires_at>0&&a.expires_at*1000-Date.now()<86400000)cred.append(node('span','即将或已经到期，请重新绑定','expiry'));if(a.token_hint)cred.append(node('span',a.token_hint,'secondary'));tr.append(cred);
       const bal=node('td');bal.dataset.label='钱包余额';bal.append(node('span',a.balance_quota==null?'—':usd(a.account_id,a.balance_quota),'strong'));tr.append(bal);
@@ -199,7 +227,7 @@ function mount(){
       const planned=node('td');planned.dataset.label='下次运行';const schedule=data.schedules?.[a.account_id];planned.append(node('span',schedule?.work_id?'本日任务已入队':schedule?when(schedule.planned_at):a.status==='ready'?'等待排程':'已暂停'));tr.append(planned);
       const actions=node('td');actions.dataset.label='操作';const group=node('div',undefined,'row-actions');
       if(a.checkin_mode==='login'&&a.oauth_provider!=='github')group.append(button('直接登录',()=>{window.open(new URL('/login',a.site).href,'_blank','noopener')}));
-      const login=a.checkin_mode==='login';const check=button(login?'检测到账':'签到',b=>run(()=>api.request(login?'/recheck':'/checkin',{method:'POST',body:{account_id:a.account_id}}),b,login?'已重新检测到账':'任务已加入队列'));check.disabled=a.status!=='ready';group.append(check,button('重新检查',b=>run(()=>api.request('/recheck',{method:'POST',body:{account_id:a.account_id}}),b,'已重新检查')),button('重绑',()=>openBind(a)),button(['delete_pending','delete_failed'].includes(a.status)?'重试删除':'删除',()=>{$('delete-id').value=a.account_id;renderText($('delete-name'),a.label||a.username);$('delete-dialog').showModal()},'quiet danger'));actions.append(group);tr.append(actions);accountRows.push(tr,renderHealthRow(document,a,healthPayload.accounts?.[a.account_id]));
+      const login=a.checkin_mode==='login';const check=button(login?'检测到账':'签到',b=>run(()=>api.request(login?'/recheck':'/checkin',{method:'POST',body:{account_id:a.account_id}}),b,login?'已重新检测到账':'任务已加入队列'));check.disabled=a.status!=='ready';group.append(check,button('重新检查',b=>run(()=>api.request('/recheck',{method:'POST',body:{account_id:a.account_id}}),b,'已重新检查')),button('重绑',()=>openBind(a)),button(['delete_pending','delete_failed'].includes(a.status)?'重试删除':'删除',()=>{$('delete-id').value=a.account_id;renderText($('delete-name'),a.label||a.username);$('delete-dialog').showModal()},'quiet danger'));actions.append(group);tr.append(actions);accountRows.push(tr,renderHealthRow(document,a,healthPayload.accounts?.[a.account_id],modelsPayload.accounts?.[a.account_id]));
     }
     replaceAccountRows(document,body,accountRows);
     const history=$('history-rows');history.replaceChildren();const names=new Map((data.accounts??[]).map(a=>[a.account_id,a.label||a.username]));const modes=new Map((data.accounts??[]).map(a=>[a.account_id,a.checkin_mode]));const entries=[...(data.history??[])].reverse();$('history-empty').hidden=entries.length>0;

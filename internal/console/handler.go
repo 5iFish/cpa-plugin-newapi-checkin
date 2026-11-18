@@ -175,13 +175,13 @@ func (h *Handler) Handle(ctx context.Context, req pluginapi.ManagementRequest) (
 				return a.ID < b.ID
 			}
 		})
-		result = map[string]any{"accounts": accounts, "jobs": s.Jobs, "work_items": s.WorkItems, "history": s.History, "schedules": s.Schedules, "settings": h.Settings(), "overrides": s.SettingsOverrides, "error": s.Error, "health": h.healthStatus()}
+		result = map[string]any{"accounts": accounts, "jobs": s.Jobs, "work_items": s.WorkItems, "history": s.History, "schedules": s.Schedules, "settings": h.Settings(), "overrides": s.SettingsOverrides, "error": s.Error, "health": h.healthStatus(), "models": h.modelsStatus()}
 	case "GET " + Base + "/health":
 		if len(req.Query) != 0 || len(req.Body) != 0 {
 			err = core.Error("invalid_input")
 			break
 		}
-		result = map[string]any{"health": h.healthStatus()}
+		result = map[string]any{"health": h.healthStatus(), "models": h.modelsStatus()}
 	case "POST " + Base + "/health":
 		var in struct {
 			Refresh bool `json:"refresh"`
@@ -204,7 +204,7 @@ func (h *Handler) Handle(ctx context.Context, req pluginapi.ManagementRequest) (
 			if started || health.Refreshing {
 				status = http.StatusAccepted
 			}
-			result = map[string]any{"health": health}
+			result = map[string]any{"health": health, "models": h.modelsStatus()}
 		}
 	case "GET " + Base + "/probe":
 		provider := req.Query.Get("provider")

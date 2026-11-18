@@ -17,7 +17,7 @@ import (
 )
 
 func TestWorkflowHealthReadCacheAndRefresh(t *testing.T) {
-	var logs atomic.Int32
+	var logs, models atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/status":
@@ -26,6 +26,12 @@ func TestWorkflowHealthReadCacheAndRefresh(t *testing.T) {
 			_, _ = w.Write([]byte(`{"success":true,"data":{"id":7,"username":"health-user","quota":100,"used_quota":0,"last_login_time":1}}`))
 		case "/api/user/checkin":
 			_, _ = w.Write([]byte(`{"success":true,"data":{"enabled":true,"stats":{"checked_in_today":true,"total_quota":0,"total_checkins":0,"records":[]}}}`))
+		case "/api/user/models":
+			models.Add(1)
+			if r.Header.Get("New-Api-User") != "7" || r.Header.Get("Authorization") != "Bearer nap_health-integration" {
+				t.Error("model list used the wrong account credential")
+			}
+			_, _ = w.Write([]byte(`{"success":true,"data":["gpt-4o","claude-3-7","integration-model"]}`))
 		case "/api/log/self":
 			logs.Add(1)
 			if r.Header.Get("New-Api-User") != "7" || r.Header.Get("Authorization") != "Bearer nap_health-integration" {
@@ -54,22 +60,28 @@ func TestWorkflowHealthReadCacheAndRefresh(t *testing.T) {
 		t.Fatal("health account response missing identity")
 	}
 	code, body = h.call("GET", "/health", nil)
-	if code != 200 || logs.Load() != 0 {
-		t.Fatalf("reading health unexpectedly fetched site logs: %d %s hits=%d", code, body, logs.Load())
+	if code != 200 || logs.Load() != 0 || models.Load() != 0 {
+		t.Fatalf("reading health unexpectedly fetched site logs or models: %d %s hits=%d/%d", code, body, logs.Load(), models.Load())
 	}
 	code, body = h.call("POST", "/health", map[string]bool{"refresh": true})
 	if code != http.StatusAccepted {
 		t.Fatalf("health refresh not queued: %d %s", code, body)
 	}
-	h.wait(10*time.Second, func() bool { return h.snapshot().Health[bound.Data.ID].Complete })
+	h.wait(10*time.Second, func() bool {
+		snap := h.snapshot()
+		return snap.Health[bound.Data.ID].Complete && snap.Models[bound.Data.ID].Complete
+	})
 	a := h.snapshot().Health[bound.Data.ID]
 	if a.Success != 1 || a.Failed != 1 || len(a.Buckets) != 48 || a.Buckets[1].Success != 1 || a.Buckets[1].Failed != 1 || logs.Load() != 2 {
 		t.Fatalf("CPA health payload incorrect: %+v hits=%d", a, logs.Load())
 	}
+	if m := h.snapshot().Models[bound.Data.ID]; models.Load() != 1 || len(m.Models) != 3 || m.Models[2] != "integration-model" {
+		t.Fatalf("CPA models payload incorrect: %+v hits=%d", m, models.Load())
+	}
 	for _, path := range []string{"/health", "/status"} {
 		code, body = h.call("GET", path, nil)
-		if code != 200 || logs.Load() != 2 || !bytes.Contains(body, []byte(`"health":`)) || bytes.Contains(body, []byte("nap_health-integration")) || bytes.Contains(body, []byte("private-health-error")) {
-			t.Fatalf("unsafe or uncached %s response: %d %s hits=%d", path, code, body, logs.Load())
+		if code != 200 || logs.Load() != 2 || models.Load() != 1 || !bytes.Contains(body, []byte(`"health":`)) || !bytes.Contains(body, []byte(`"models":`)) || !bytes.Contains(body, []byte("integration-model")) || bytes.Contains(body, []byte("nap_health-integration")) || bytes.Contains(body, []byte("private-health-error")) {
+			t.Fatalf("unsafe or uncached %s response: %d %s hits=%d/%d", path, code, body, logs.Load(), models.Load())
 		}
 	}
 	res, err := http.Get(h.base + "/v0/management/plugins/newapi-checkin/health")

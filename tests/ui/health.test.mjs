@@ -16,7 +16,7 @@ test('TestHealthAutoRefreshRequiresVisibleAuthenticatedAccounts',async()=>{
   f.controller.setVisible(false);f.controller.setAuthenticated(true);await tick();assert.equal(seen.length,0);
   f.controller.setVisible(true);await tick();assert.equal(seen.length,1);
   assert.equal(seen[0][0],'/health');assert.equal(seen[0][1].method,'POST');assert.deepEqual(seen[0][1].body,{refresh:false});
-  assert.equal(f.data[0].refreshing,true);assert.equal([...f.timers.values()][0].ms,300000);
+  assert.equal(f.data[0].health.refreshing,true);assert.equal(f.data[0].models,undefined);assert.equal([...f.timers.values()][0].ms,300000);
   f.controller.stop();assert.equal(f.timers.size,0);
 });
 

@@ -444,6 +444,7 @@ func (s *Service) Bind(ctx context.Context, in BindInput) (out core.AccountSumma
 			}
 			v.Accounts[id] = record
 			delete(v.Health, id)
+			delete(v.Models, id)
 			// Cached statistics capture the account label at aggregation time;
 			// a rename must not leave the charts showing the previous name.
 			for key, summary := range v.Stats {
@@ -886,6 +887,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		if e := s.state.Update(func(v *state.Snapshot) error {
 			v.DeletePending[id] = true
 			delete(v.Health, id)
+			delete(v.Models, id)
 			delete(v.RefreshPending, id)
 			v.CancelWork(id)
 			delete(v.Schedules, id)

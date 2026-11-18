@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createApiController,renderText,clearSensitiveFields,allowedChannels} from '../../internal/console/web/console.js';
+import {createApiController,renderText,clearSensitiveFields,allowedChannels,renderSiteLink} from '../../internal/console/web/console.js';
 const tick=()=>new Promise(r=>setImmediate(r));
 function setup(fetch,stored=null){const timers=new Map();let next=0;const values=new Map(stored?[['newapi-checkin:auth',stored]]:[]);return {fetch,storage:{getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},setTimeout:(fn,ms)=>{timers.set(++next,{fn,ms});return next},clearTimeout:id=>timers.delete(id),timers,values}}
 const ok=data=>({status:200,ok:true,json:async()=>({success:true,data})});
@@ -15,3 +15,21 @@ test('TestOnePollAtATime',async()=>{let n=0,release;const api=createApiControlle
 test('TestHiddenPageStopsPolling',async()=>{let n=0;const options=setup(async()=>{n++;return ok({jobs:{}})});const api=createApiController(options);await api.setKey('key');api.setVisible(false);assert.equal(options.timers.size,0);await api.poll();assert.equal(n,1);await api.setVisible(true);assert.equal(n,2);api.stop()});
 test('TestProbeQueryWhitelistedOnly',async()=>{const seen=[];const api=createApiController(setup(async url=>{seen.push(url);return ok({status:'ok'})}));await api.setKey('key');await api.request('/probe?provider=linuxdo');assert.ok(seen.some(u=>u.endsWith('/probe?provider=linuxdo')));await assert.rejects(api.request('/probe?provider=evil'),e=>e.kind==='invalid_input');await assert.rejects(api.request('/probe?provider=github%20x'),e=>e.kind==='invalid_input');api.stop()});
 test('TestStatsQueryWhitelistedOnly',async()=>{const seen=[];const api=createApiController(setup(async url=>{seen.push(url);return ok({stats:{},from_cache:false})}));await api.setKey('key');await api.request('/stats?range=7d');assert.ok(seen.some(u=>u.endsWith('/stats?range=7d')));await api.request('/stats?range=24h&refresh=1');assert.ok(seen.some(u=>u.endsWith('/stats?range=24h&refresh=1')));await assert.rejects(api.request('/stats?range=1y'),e=>e.kind==='invalid_input');await assert.rejects(api.request('/stats?range=7d&refresh=2'),e=>e.kind==='invalid_input');api.stop()});
+
+const stubDoc={createElement:tag=>({tagName:tag.toUpperCase(),className:'',children:[]})};
+test('TestSiteLinkOpensValidSitesInNewTab',()=>{
+  const link=renderSiteLink(stubDoc,'https://example.test/a-long-deployment-path');
+  assert.equal(link.href,'https://example.test/a-long-deployment-path');
+  assert.equal(link.target,'_blank');
+  assert.equal(link.rel,'noopener noreferrer');
+  assert.equal(link.textContent,'https://example.test/a-long-deployment-path');
+  assert.equal(link.className,'secondary site site-link');
+});
+test('TestSiteLinkRejectsNonHttpSchemes',()=>{
+  for(const url of ['javascript:alert(1)','data:text/html,<script>','ftp://example.test','not a url',undefined]){
+    const link=renderSiteLink(stubDoc,url);
+    assert.equal(link.href,undefined,url);
+    assert.equal(link.target,undefined,url);
+    assert.equal(link.textContent,String(url ?? ''));
+  }
+});

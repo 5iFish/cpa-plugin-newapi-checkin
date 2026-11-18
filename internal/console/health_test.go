@@ -26,14 +26,15 @@ func TestHealthReadOnlyRoutesUseCache(t *testing.T) {
 	if err := st.Update(func(v *state.Snapshot) error {
 		v.Accounts["id"] = state.AccountRecord{ID: "id", Status: "ready"}
 		v.Health["id"] = core.AccountHealth{ID: "id", Success: 3, Failed: 1, Complete: true, SyncedAt: time.Now(), CheckedAt: time.Now()}
+		v.Models["id"] = core.AccountModels{ID: "id", Models: []string{"gpt-4o", "claude-3-7"}, Complete: true, SyncedAt: time.Now(), CheckedAt: time.Now()}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/health", "/status"} {
 		r, err := h.Handle(context.Background(), pluginapi.ManagementRequest{Method: "GET", Path: Base + path})
-		if err != nil || r.StatusCode != 200 || !strings.Contains(string(r.Body), `"health":{"accounts":{"id":`) || !strings.Contains(string(r.Body), `"success":3`) || r.Headers.Get("Cache-Control") != "no-store" {
-			t.Fatalf("cached health absent from %s: %v %d %s", path, err, r.StatusCode, r.Body)
+		if err != nil || r.StatusCode != 200 || !strings.Contains(string(r.Body), `"health":{"accounts":{"id":`) || !strings.Contains(string(r.Body), `"success":3`) || !strings.Contains(string(r.Body), `"models":{"accounts":{"id":`) || !strings.Contains(string(r.Body), `"gpt-4o"`) || r.Headers.Get("Cache-Control") != "no-store" {
+			t.Fatalf("cached health or models absent from %s: %v %d %s", path, err, r.StatusCode, r.Body)
 		}
 	}
 }
@@ -114,9 +115,15 @@ func TestHealthRefreshReturns202WithoutBlockingStatus(t *testing.T) {
 	var body struct {
 		Data struct {
 			Health core.HealthSummary `json:"health"`
+			Models core.ModelsSummary `json:"models"`
 		} `json:"data"`
 	}
-	if json.Unmarshal(r.Body, &body) != nil || len(body.Data.Health.Accounts) != 1 {
-		t.Fatal(fmt.Sprintf("invalid health payload: %s", r.Body))
+	if json.Unmarshal(r.Body, &body) != nil || len(body.Data.Health.Accounts) != 1 || len(body.Data.Models.Accounts) != 1 {
+		t.Fatal(fmt.Sprintf("invalid health or models payload: %s", r.Body))
+	}
+	for _, m := range body.Data.Models.Accounts {
+		if m.CheckedAt.IsZero() || m.Complete {
+			t.Fatal(fmt.Sprintf("unsupported models endpoint reported complete: %s", r.Body))
+		}
 	}
 }

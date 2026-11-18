@@ -1,5 +1,21 @@
 # Changelog / 更新记录
 
+## v0.2.2 — 2026-11-18
+
+- 账号列第二行的站点网址改为链接，点击在新标签页打开（`target="_blank"` + `rel="noopener noreferrer"`）。服务端绑定时已把站点规范化为 https；前端再次校验协议，仅 http/https 生成可点击链接，损坏的状态文件无法注入其他协议地址。
+- 请求状态条下方新增该账号的“可用模型”列表：读取站点 `GET /api/user/models`（当前用户组可调用的模型名，与日志读取同一凭证和 `New-Api-User` 头），以圆角标签完整展示，悬浮查看全名。
+- 模型列表缓存 12 小时，并入请求状态的后台刷新任务与“刷新请求状态”按钮；页面轮询只读缓存。读取失败或接口不支持显示“数据不可确认”并保留上次列表标注过期；站点返回空列表如实显示“站点未返回可用模型”。
+- 重绑和删除使该账号模型缓存失效；采集在保存前复查账号一致性与凭证代数，与请求状态相同的失效保护。仅保存模型名和时间戳，不保存凭证或站点元数据。
+- `/health`、`/status` 响应新增 `models` 字段；不新增管理路由，ABI 路由数保持 11。真实 CPA 集成测试扩展覆盖模型载荷、缓存读取不访问站点与响应敏感信息清理，总数保持 10 项。
+
+English:
+
+- The site address on the account's second identity line is now a link that opens in a new tab (`target="_blank"` + `rel="noopener noreferrer"`). Sites are normalized to https at bind time and the console re-validates the protocol, so only http/https becomes clickable and a corrupted state file cannot inject another scheme.
+- Below the request status bar, each account now lists its available models, read from the site's `GET /api/user/models` (model names enabled for the account's user group, using the same credentials and `New-Api-User` header as log reads) and rendered as chips with the full name on hover.
+- The model list is cached for twelve hours and shares the request-status background worker and "刷新请求状态" button; page polling reads cache only. Failed or unsupported reads show an unconfirmed state and keep the previous list marked stale; a site returning an empty list is shown as such.
+- Rebinds and deletions invalidate the account's model cache; collection rechecks account identity and credential generation before saving, with the same invalidation guards as request status. Only model names and timestamps are stored, never credentials or site metadata.
+- `/health` and `/status` responses gain a `models` field; no new management routes are added and the ABI route count stays at 11. The real-CPA integration test now covers the models payload, cache-only reads, and response sanitization, keeping the total at 10 tests.
+
 ## v0.2.1 — 2026-11-17
 
 - 新增每个站点账号的“近 24 小时请求状态”：在账号条目最下方以跨满列表宽度的 48 个时间块展示最近 24 小时，每块 30 分钟；手机端固定在该账号卡片底部。

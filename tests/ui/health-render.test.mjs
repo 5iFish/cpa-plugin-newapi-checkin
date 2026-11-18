@@ -101,3 +101,36 @@ test('TestHealthTooltipSupportsMouseKeyboardAndTouch',()=>{
   blocks[2].dispatch('pointerdown',{pointerType:'touch'});assert.equal(tip.hidden,false);assert.ok(tip.textContent.includes('错误 2'));
   blocks[2].dispatch('pointerdown',{pointerType:'touch'});assert.equal(tip.hidden,true);
 });
+
+test('TestModelsSectionRendersBelowStatusBar',()=>{
+  const {document,all}=dom();
+  const row=renderHealthRow(document,account,health(),{account_id:'a',models:['gpt-4o','claude-3-7 <img src=x onerror=alert(1)>','deepseek-chat'],complete:true,stale:false,synced_at:'2026-11-17T08:00:00Z',checked_at:'2026-11-17T08:00:00Z'});
+  const wrap=row.children[0].children[0];
+  const modelsBlock=byClass(all,'health-models')[0];
+  assert.equal(wrap.children.at(-1),modelsBlock,'models block is not the last element below the status bar');
+  assert.ok(wrap.children.indexOf(byClass(all,'health-foot')[0])<wrap.children.indexOf(modelsBlock),'models block is not below the status bar');
+  assert.ok(modelsBlock.textContent.includes('可用模型'));assert.ok(modelsBlock.textContent.includes('3 个'));
+  const chips=byClass(all,'model-chip');
+  assert.equal(chips.length,3);
+  assert.equal(chips[0].textContent,'gpt-4o');
+  assert.equal(chips[1].title,'claude-3-7 <img src=x onerror=alert(1)>');
+  assert.ok(all.every(el=>el.innerHTML===undefined),'model names used HTML');
+});
+
+test('TestModelsUnknownWaitingEmptyAndStaleStates',()=>{
+  for(const [models,expected,noChips] of [
+    [undefined,'等待刷新',true],
+    [null,'等待刷新',true],
+    [{models:[],complete:false,error:'permission_denied'},'数据不可确认',true],
+    [{models:['gpt-4o',null],complete:true},'数据不可确认',true],
+    [{models:[],complete:true,synced_at:'2026-11-17T08:00:00Z'},'站点未返回可用模型',true],
+    [{models:['gpt-4o'],complete:true,stale:true,synced_at:'2026-11-17T08:00:00Z'},'已过期',false],
+  ]){
+    const {document,all}=dom();const row=renderHealthRow(document,account,health(),models);
+    const block=byClass(all,'health-models')[0];
+    assert.ok(block.textContent.includes(expected),`${JSON.stringify(models)} missing "${expected}"`);
+    assert.equal(byClass(all,'model-chip').length===0,noChips,`unexpected chips for ${JSON.stringify(models)}`);
+    assert.equal(byClass(all,'health-block').length,48,'models payload broke the status bar');
+    assert.ok(!row.textContent.includes('NaN')&&!row.textContent.includes('Infinity'));
+  }
+});

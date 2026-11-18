@@ -103,7 +103,8 @@ func (s *Service) RefreshHealth(ctx context.Context, force bool) (bool, error) {
 			continue
 		}
 		cached := snap.Health[id]
-		if !force && !cached.CheckedAt.IsZero() && time.Since(cached.CheckedAt) < healthCacheAge {
+		healthFresh := !cached.CheckedAt.IsZero() && time.Since(cached.CheckedAt) < healthCacheAge
+		if !force && healthFresh && !modelsCacheDue(snap, id) {
 			continue
 		}
 		ids = append(ids, id)
@@ -123,11 +124,11 @@ func (s *Service) RefreshHealth(ctx context.Context, force bool) (bool, error) {
 	s.health.running, s.health.error = true, ""
 	s.health.done = make(chan struct{})
 	root, done := s.health.root, s.health.done
-	go s.refreshHealth(root, done, snap, ids)
+	go s.refreshHealth(root, done, snap, ids, force)
 	return true, nil
 }
 
-func (s *Service) refreshHealth(root context.Context, done chan struct{}, snap state.Snapshot, ids []string) {
+func (s *Service) refreshHealth(root context.Context, done chan struct{}, snap state.Snapshot, ids []string, force bool) {
 	defer func() {
 		s.health.mu.Lock()
 		s.health.running = false
@@ -143,23 +144,42 @@ func (s *Service) refreshHealth(root context.Context, done chan struct{}, snap s
 			return
 		}
 		rec := snap.Accounts[id]
-		accountCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-		out, generation, err := s.collectHealth(accountCtx, rec, start, end)
-		stop()
-		if ctx.Err() != nil {
-			return
-		}
-		if core.ErrorKind(err) == "health_invalidated" {
-			continue
-		}
-		if err = s.saveHealth(ctx, rec, generation, out); err != nil {
+		if force || healthCacheDue(snap, id) {
+			accountCtx, stop := context.WithTimeout(ctx, 30*time.Second)
+			out, generation, err := s.collectHealth(accountCtx, rec, start, end)
+			stop()
+			if ctx.Err() != nil {
+				return
+			}
 			if core.ErrorKind(err) == "health_invalidated" {
 				continue
 			}
-			s.health.mu.Lock()
-			s.health.error = healthError(err)
-			s.health.mu.Unlock()
+			if err = s.saveHealth(ctx, rec, generation, out); err != nil {
+				if core.ErrorKind(err) == "health_invalidated" {
+					continue
+				}
+				s.health.mu.Lock()
+				s.health.error = healthError(err)
+				s.health.mu.Unlock()
+				return
+			}
+		}
+		if ctx.Err() != nil {
 			return
+		}
+		if force || modelsCacheDue(snap, id) {
+			accountCtx, stop := context.WithTimeout(ctx, 30*time.Second)
+			out, generation, err := s.collectModels(accountCtx, rec)
+			stop()
+			if ctx.Err() != nil {
+				return
+			}
+			if core.ErrorKind(err) == "health_invalidated" {
+				continue
+			}
+			// A failed model read is cached on the account; the round keeps
+			// going so other accounts still get their health and models.
+			_ = s.saveModels(ctx, rec, generation, out)
 		}
 	}
 }
@@ -169,6 +189,13 @@ func healthError(err error) string {
 		return "health_timeout"
 	}
 	return core.ErrorKind(err)
+}
+
+// healthCacheDue reports whether the account's log counters need a read in
+// this round: never attempted or the last attempt is past the cache age.
+func healthCacheDue(snap state.Snapshot, id string) bool {
+	cached := snap.Health[id]
+	return cached.CheckedAt.IsZero() || time.Since(cached.CheckedAt) >= healthCacheAge
 }
 
 func (s *Service) collectHealth(ctx context.Context, rec state.AccountRecord, start, end int64) (core.AccountHealth, uint64, error) {

@@ -8,16 +8,16 @@
 
 ## 下载
 
-**v0.2.1** 的发布包按以下六个平台分别构建；发布工作流在每个平台执行原生构建和真实 CPA 集成测试，全部通过后才汇总安装包与校验值。可从页面顶部“下载正式版”获取；验证记录见[兼容性说明](docs/compatibility.md)。`amd64` 即 `x86_64 / x64`，`arm64` 即 `aarch64`，不包含 32 位 ARM。
+**v0.2.2** 的发布包按以下六个平台分别构建；发布工作流在每个平台执行原生构建和真实 CPA 集成测试，全部通过后才汇总安装包与校验值。可从页面顶部“下载正式版”获取；验证记录见[兼容性说明](docs/compatibility.md)。`amd64` 即 `x86_64 / x64`，`arm64` 即 `aarch64`，不包含 32 位 ARM。
 
 | 平台 | Release 下载文件 | ZIP 内的插件文件 |
 | --- | --- | --- |
-| Windows x64 | `newapi-checkin_0.2.1_windows_amd64.zip` | `newapi-checkin.dll` |
-| Windows ARM64 | `newapi-checkin_0.2.1_windows_arm64.zip` | `newapi-checkin.dll` |
-| Linux x86_64 | `newapi-checkin_0.2.1_linux_amd64.zip` | `newapi-checkin.so` |
-| Linux ARM64 | `newapi-checkin_0.2.1_linux_arm64.zip` | `newapi-checkin.so` |
-| macOS Intel | `newapi-checkin_0.2.1_darwin_amd64.zip` | `newapi-checkin.dylib` |
-| macOS Apple Silicon（M 系列） | `newapi-checkin_0.2.1_darwin_arm64.zip` | `newapi-checkin.dylib` |
+| Windows x64 | `newapi-checkin_0.2.2_windows_amd64.zip` | `newapi-checkin.dll` |
+| Windows ARM64 | `newapi-checkin_0.2.2_windows_arm64.zip` | `newapi-checkin.dll` |
+| Linux x86_64 | `newapi-checkin_0.2.2_linux_amd64.zip` | `newapi-checkin.so` |
+| Linux ARM64 | `newapi-checkin_0.2.2_linux_arm64.zip` | `newapi-checkin.so` |
+| macOS Intel | `newapi-checkin_0.2.2_darwin_amd64.zip` | `newapi-checkin.dylib` |
+| macOS Apple Silicon（M 系列） | `newapi-checkin_0.2.2_darwin_arm64.zip` | `newapi-checkin.dylib` |
 
 每个正式版本附带 `checksums.txt`，请从同一个 Release 下载安装包与校验文件。Linux 可运行 `sha256sum -c checksums.txt --ignore-missing`；macOS 可运行 `shasum -a 256 <安装包>`，Windows 可运行 `Get-FileHash -Algorithm SHA256 <安装包>`，对照文件内的校验值。
 
@@ -58,6 +58,8 @@ plugins:
 每个账号条目最下方显示撑满列表宽度的“近 24 小时请求状态”：48 格，每格 30 分钟。使用同一账号的 `/api/log/self` 消费记录（`type=2`）与错误记录（`type=5`）聚合，绿色表示有消费且未读到错误，混合记录按比例渐变，只有错误为红色，无请求记录为灰色；接口不支持、读取失败或超过每种日志 2000 条上限时显示斜纹和数据不完整，不伪造成功率。悬浮、触屏点击或键盘方向键可查看分段计数。
 
 账号页可见时每 5 分钟检查并在后台更新缓存，也可点“刷新请求状态”。页面轮询只读取缓存，切换用量统计区间不改变状态条的 24 小时范围；失败保留上次结果并标注过期，重绑和删除使该账号缓存失效。日志读取不发起模型探测，不消耗调用额度。**记录成功率不是站点可用率**：错误日志可能包含重试或漏记，空错误列表不能证明没有失败。仅保存时间和计数，不保存原始日志、错误正文、令牌名称或 IP。
+
+状态条下方显示该账号在站点上可调用的**可用模型**列表：读取站点 `/api/user/models`（当前用户组可用模型名），以圆角标签完整展示，悬浮查看全名。列表缓存 12 小时并与请求状态共用同一后台刷新和“刷新请求状态”按钮；读取失败或接口不支持时显示数据不可确认并保留上次列表标注过期，站点未返回模型时如实显示。仅保存模型名与时间戳。账号列第二行的站点网址为链接，点击在新标签页打开（`noopener`）。
 
 ## 选择绑定方式
 

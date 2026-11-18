@@ -14,12 +14,22 @@ for(const [index,a] of accounts.entries()){
 }
 let refreshing=false;
 const health=()=>({accounts:healthAccounts,refreshing});
+const modelNames=['gpt-4o','gpt-4o-mini','claude-3-7-sonnet','claude-sonnet-4-5','deepseek-chat','deepseek-reasoner','gemini-2.0-flash','qwen-max','qwen-plus','llama-3.3-70b','mistral-large','kimi-k2','grok-3','doubao-pro-32k','glm-4.7'];
+const modelsAccounts={};
+for(const [index,a] of accounts.entries()){
+  modelsAccounts[a.account_id]=index===1
+    ?{account_id:a.account_id,models:[],complete:false,stale:false,synced_at:'0001-01-01T00:00:00Z',checked_at:new Date().toISOString(),error:'permission_denied'}
+    :index===2
+      ?{account_id:a.account_id,models:[],complete:true,stale:false,synced_at:new Date().toISOString(),checked_at:new Date().toISOString(),error:''}
+      :{account_id:a.account_id,models:modelNames.slice(0,index===3?6:modelNames.length),complete:true,stale:index===3,synced_at:new Date((end-(index===3?46800:0))*1000).toISOString(),checked_at:new Date().toISOString(),error:index===3?'network_error':''};
+}
+const models=()=>({accounts:modelsAccounts,refreshing});
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost');
  if(url.pathname==='/__test/stats'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({calls}));return}
  if(url.pathname.startsWith('/v0/management/')){calls++;res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer ui-test-key'){res.writeHead(req.headers.authorization==='Bearer ui-forbidden-key'?403:401);res.end('{}');return}
-   if(url.pathname.endsWith('/status')){res.end(JSON.stringify({success:true,data:{accounts,jobs:{},work_items:{},schedules:{},history:[],settings:{checkin_at:'09:00',jitter_minutes:20,timezone:'Asia/Shanghai'},health:health()}}));return}
-   if(url.pathname.endsWith('/health')){if(req.method==='POST'&&!refreshing){refreshing=true;setTimeout(()=>{refreshing=false},1200)}res.writeHead(refreshing?202:200);res.end(JSON.stringify({success:true,data:{health:health()}}));return}
+	   if(url.pathname.endsWith('/status')){res.end(JSON.stringify({success:true,data:{accounts,jobs:{},work_items:{},schedules:{},history:[],settings:{checkin_at:'09:00',jitter_minutes:20,timezone:'Asia/Shanghai'},health:health(),models:models()}}));return}
+	   if(url.pathname.endsWith('/health')){if(req.method==='POST'&&!refreshing){refreshing=true;setTimeout(()=>{refreshing=false},1200)}res.writeHead(refreshing?202:200);res.end(JSON.stringify({success:true,data:{health:health(),models:models()}}));return}
    if(url.pathname.endsWith('/stats')){res.end(JSON.stringify({success:true,data:{from_cache:true,stats:{range:url.searchParams.get('range'),start,end,synced_at:new Date().toISOString(),totals:{},accounts:[],models:[],series:[],failed:{}}}}));return}
    if(url.pathname.endsWith('/balance')){res.end(JSON.stringify({success:true,data:{accounts,failed:{}}}));return}
    if(url.pathname.endsWith('/accounts')&&req.method==='POST'){res.writeHead(422);res.end(JSON.stringify({success:false,error:{kind:'refresh_outcome_unknown'}}));return}

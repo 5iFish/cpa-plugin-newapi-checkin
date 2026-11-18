@@ -21,7 +21,7 @@ import (
 	"github.com/5ifish/cpa-plugin-newapi-checkin/internal/testutil"
 )
 
-func healthFixture(t *testing.T, logs http.HandlerFunc) (*Service, *state.Store, string) {
+func healthFixture(t *testing.T, logs http.HandlerFunc, models ...http.HandlerFunc) (*Service, *state.Store, string) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -29,6 +29,12 @@ func healthFixture(t *testing.T, logs http.HandlerFunc) (*Service, *state.Store,
 			_, _ = w.Write([]byte(`{"success":true,"data":{"turnstile_check":false,"quota_per_unit":500000}}`))
 		case "/api/user/self":
 			_, _ = w.Write([]byte(`{"success":true,"data":{"id":7,"username":"user","quota":100,"used_quota":0,"last_login_time":1}}`))
+		case "/api/user/models":
+			if len(models) > 0 && models[0] != nil {
+				models[0](w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`{"success":true,"data":["gpt-4o","claude-3-7"]}`))
 		case "/api/log/self":
 			logs(w, r)
 		default:
@@ -247,13 +253,16 @@ func TestHealthCacheInvalidatedOnRebindAndDelete(t *testing.T) {
 	if _, exists := st.Read().Health[id]; exists {
 		t.Fatal("rebind retained previous health cache")
 	}
+	if _, exists := st.Read().Models[id]; exists {
+		t.Fatal("rebind retained previous models cache")
+	}
 	_, _ = svc.RefreshHealth(context.Background(), true)
 	waitHealth(t, svc)
 	if err = svc.Delete(context.Background(), id); err != nil {
 		t.Fatal(err)
 	}
-	if len(svc.HealthStatus().Accounts) != 0 || len(st.Read().Health) != 0 {
-		t.Fatal("deleted account retained health")
+	if len(svc.HealthStatus().Accounts) != 0 || len(st.Read().Health) != 0 || len(svc.ModelsStatus().Accounts) != 0 || len(st.Read().Models) != 0 {
+		t.Fatal("deleted account retained health or models")
 	}
 }
 
